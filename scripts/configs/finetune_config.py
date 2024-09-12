@@ -160,4 +160,12 @@ def get_config(config_string="head_only,language_conditioned"):
 
     config["traj_transform_kwargs"] = traj_transform_kwargs
     config["frame_transform_kwargs"] = frame_transform_kwargs
+
+    config["hypernet_kwargs"] = dict(
+        lora_type='hypernet', # "hypernet", or "vanilla"
+        context_embedding_dim=128,
+        lora_rank=32,
+        lora_alpha=1.,
+    )
+
     return ConfigDict(config)

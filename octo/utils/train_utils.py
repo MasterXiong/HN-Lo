@@ -15,7 +15,8 @@ import numpy as np
 import optax
 
 from octo.data.utils.text_processing import TextProcessor
-from octo.model.octo_model import OctoModel
+from octo.model_lora.octo_model import OctoModel
+# from octo.model.octo_model import OctoModel
 from octo.utils import jax_utils
 from octo.utils.typing import Config, Data, Params, PRNGKey
 
@@ -260,7 +261,23 @@ def freeze_weights(
         else "trainable",
         params_or_params_shape,
     )
+    # hard code: manually set LoRA and HN params to trainable
+    param_partitions = flax.traverse_util.path_aware_map(
+        lambda path, v: "trainable"
+        if "hypernet" in ".".join(path) or "lora" in ".".join(path)
+        else v,
+        param_partitions,
+    )
     tx = optax.multi_transform(partition_optimizers, param_partitions)
+
+    # print trainable params
+    logging.info("Trainable params:")
+    flax.traverse_util.path_aware_map(
+        lambda path, opt_status: logging.info(".".join(path))
+        if opt_status == "trainable"
+        else None,
+        param_partitions,
+    )
 
     logging.debug("Frozen params:")
     flax.traverse_util.path_aware_map(
@@ -398,6 +415,7 @@ def merge_params(target_params: Params, pretrained_params: Params) -> Params:
         if k in flat_pretrained_params
         and flat_target_params[k].shape != flat_pretrained_params[k].shape
     ]
+    keys_only_in_pretrained = [k for k in flat_pretrained_params if k not in flat_target_params]
 
     for key in keys_to_update:
         logging.debug(f"Param copied from pre-trained: {'.'.join(key)}")
@@ -410,6 +428,12 @@ def merge_params(target_params: Params, pretrained_params: Params) -> Params:
         for key in shape_mismatch_keys:
             logging.info(
                 f"Param with differing shape in pre-trained model, skipping: {'.'.join(key)}"
+            )
+    if keys_only_in_pretrained:
+        logging.info("########## Parameters only in pre-trained model ##########")
+        for key in keys_only_in_pretrained:
+            logging.info(
+                f"Param only in pre-trained model, skipping: {'.'.join(key)}"
             )
 
     flat_target_params = flax.core.copy(

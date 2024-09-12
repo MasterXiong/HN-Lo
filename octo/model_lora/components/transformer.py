@@ -1,11 +1,11 @@
 # adapted from https://github.com/google-research/vision_transformer/blob/main/vit_jax/models_vit.py
-from typing import Callable, Optional
+from typing import Callable, Optional, Dict
 
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
 
-from octo.model.components.base import TokenGroup
+from octo.model_lora.components.base import TokenGroup
 from octo.utils.typing import Dtype, PRNGKey, Shape, Union
 
 
@@ -41,6 +41,7 @@ class MlpBlock(nn.Module):
     """Transformer MLP / feed-forward block."""
 
     mlp_dim: int
+    hypernet_kwargs: Dict
     dtype: Dtype = jnp.float32
     out_dim: Optional[int] = None
     dropout_rate: float = 0.1
@@ -52,7 +53,7 @@ class MlpBlock(nn.Module):
     )
 
     @nn.compact
-    def __call__(self, inputs, *, deterministic):
+    def __call__(self, inputs, lora_params, *, deterministic):
         """Applies Transformer MlpBlock module."""
         actual_out_dim = inputs.shape[-1] if self.out_dim is None else self.out_dim
         x = nn.Dense(
@@ -61,6 +62,14 @@ class MlpBlock(nn.Module):
             kernel_init=self.kernel_init,
             bias_init=self.bias_init,
         )(inputs)
+        if self.hypernet_kwargs["lora_type"] == 'hypernet':
+            lora_A = lora_params['MLP_0_lora_A'].reshape(lora_params['MLP_0_lora_A'].shape[0], -1, self.hypernet_kwargs["lora_rank"])
+            lora_B = lora_params['MLP_0_lora_B'].reshape(lora_params['MLP_0_lora_B'].shape[0], self.hypernet_kwargs["lora_rank"], -1)
+        else:
+            lora_A = lora_params['MLP_0_lora_A']
+            lora_B = lora_params['MLP_0_lora_B']
+        lora_x = (inputs @ lora_A @ lora_B) * self.hypernet_kwargs["lora_alpha"] / self.hypernet_kwargs["lora_rank"]
+        x = x + lora_x
         x = nn.gelu(x)
         x = nn.Dropout(rate=self.dropout_rate)(x, deterministic=deterministic)
         output = nn.Dense(
@@ -69,6 +78,14 @@ class MlpBlock(nn.Module):
             kernel_init=self.kernel_init,
             bias_init=self.bias_init,
         )(x)
+        if self.hypernet_kwargs["lora_type"] == 'hypernet':
+            lora_A = lora_params['MLP_1_lora_A'].reshape(lora_params['MLP_1_lora_A'].shape[0], -1, self.hypernet_kwargs["lora_rank"])
+            lora_B = lora_params['MLP_1_lora_B'].reshape(lora_params['MLP_1_lora_B'].shape[0], self.hypernet_kwargs["lora_rank"], -1)
+        else:
+            lora_A = lora_params['MLP_1_lora_A']
+            lora_B = lora_params['MLP_1_lora_B']
+        lora_output = (x @ lora_A @ lora_B) * self.hypernet_kwargs["lora_alpha"] / self.hypernet_kwargs["lora_rank"]
+        output = output + lora_output
         output = nn.Dropout(rate=self.dropout_rate)(output, deterministic=deterministic)
         return output
 
@@ -137,12 +154,13 @@ class Encoder1DBlock(nn.Module):
 
     mlp_dim: int
     num_heads: int
+    hypernet_kwargs: Dict
     dtype: Dtype = jnp.float32
     dropout_rate: float = 0.1
     attention_dropout_rate: float = 0.1
 
     @nn.compact
-    def __call__(self, inputs, attention_mask, *, deterministic):
+    def __call__(self, inputs, attention_mask, lora_params, *, deterministic):
         """Applies Encoder1DBlock module.
 
         Args:
@@ -170,8 +188,8 @@ class Encoder1DBlock(nn.Module):
         # MLP block.
         y = nn.LayerNorm(dtype=self.dtype)(x)
         y = MlpBlock(
-            mlp_dim=self.mlp_dim, dtype=self.dtype, dropout_rate=self.dropout_rate
-        )(y, deterministic=deterministic)
+            mlp_dim=self.mlp_dim, hypernet_kwargs=self.hypernet_kwargs, dtype=self.dtype, dropout_rate=self.dropout_rate
+        )(y, lora_params, deterministic=deterministic)
 
         return x + y
 
@@ -190,12 +208,13 @@ class Transformer(nn.Module):
     num_layers: int
     mlp_dim: int
     num_attention_heads: int
+    hypernet_kwargs: Dict
     dropout_rate: float = 0.1
     attention_dropout_rate: float = 0.1
     add_position_embedding: bool = False
 
     @nn.compact
-    def __call__(self, x, attention_mask, *, train):
+    def __call__(self, x, attention_mask, lora_params, *, train):
         """Applies Transformer model on the inputs.
 
         Args:
@@ -222,7 +241,8 @@ class Transformer(nn.Module):
                 attention_dropout_rate=self.attention_dropout_rate,
                 name=f"encoderblock_{lyr}",
                 num_heads=self.num_attention_heads,
-            )(x, attention_mask, deterministic=not train)
+                hypernet_kwargs=self.hypernet_kwargs,
+            )(x, attention_mask, {key: value[lyr] for key, value in lora_params.items()}, deterministic=not train)
         encoded = nn.LayerNorm(name="encoder_norm")(x)
 
         return encoded

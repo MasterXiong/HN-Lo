@@ -74,6 +74,10 @@ def main(_):
         # Steps: {FLAGS.config.num_steps}
     """
     )
+    if FLAGS.config.save_dir is not None:
+        if not tf.io.gfile.exists(FLAGS.config.save_dir):
+            tf.io.gfile.makedirs(FLAGS.config.save_dir)
+    finetune_mode = FLAGS.config.finetuning_mode
 
     #########
     #
@@ -183,16 +187,28 @@ def main(_):
     # Load Pretrained Model
     #
     #########
+    print ("====== Load Model ======")
 
     rng = jax.random.PRNGKey(FLAGS.config.seed)
     rng, init_rng = jax.random.split(rng)
-    model = OctoModel.from_config(
-        config,
-        example_batch,
-        text_processor,
-        rng=init_rng,
-        dataset_statistics=dataset.dataset_statistics,
-    )
+    if "hypernet" in finetune_mode:
+        from octo.model_lora.octo_model import OctoModel as NewOctoModel
+        config["model"]["hypernet_kwargs"] = FLAGS.config["hypernet_kwargs"].to_dict()
+        model = NewOctoModel.from_config(
+            config,
+            example_batch,
+            text_processor,
+            rng=init_rng,
+            dataset_statistics=dataset.dataset_statistics,
+        )
+    else:
+        model = OctoModel.from_config(
+            config,
+            example_batch,
+            text_processor,
+            rng=init_rng,
+            dataset_statistics=dataset.dataset_statistics,
+        )
     merged_params = merge_params(model.params, pretrained_model.params)
     model = model.replace(params=merged_params)
     del pretrained_model
@@ -387,21 +403,21 @@ def main(_):
                 {"training": update_info, "timer": timer.get_average_times()}, step=i
             )
 
-        if (i + 1) % FLAGS.config.eval_interval == 0:
-            logging.info("Evaluating...")
+        # if (i + 1) % FLAGS.config.eval_interval == 0:
+        #     logging.info("Evaluating...")
 
-            with timer("val"):
-                val_metrics = val_callback(train_state, i + 1)
-                wandb_log(val_metrics, step=i)
+        #     with timer("val"):
+        #         val_metrics = val_callback(train_state, i + 1)
+        #         wandb_log(val_metrics, step=i)
 
-            with timer("visualize"):
-                viz_metrics = viz_callback(train_state, i + 1)
-                wandb_log(viz_metrics, step=i)
+        #     with timer("visualize"):
+        #         viz_metrics = viz_callback(train_state, i + 1)
+        #         wandb_log(viz_metrics, step=i)
 
-            if rollout_callback is not None:
-                with timer("rollout"):
-                    rollout_metrics = rollout_callback(train_state, i + 1)
-                    wandb_log(rollout_metrics, step=i)
+        #     if rollout_callback is not None:
+        #         with timer("rollout"):
+        #             rollout_metrics = rollout_callback(train_state, i + 1)
+        #             wandb_log(rollout_metrics, step=i)
 
         if (i + 1) % FLAGS.config.save_interval == 0 and save_dir is not None:
             logging.info("Saving checkpoint...")

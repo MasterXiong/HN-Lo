@@ -6,8 +6,8 @@ import flax.linen as nn
 import jax
 import jax.numpy as jnp
 
-from octo.model.components.base import TokenGroup
-from octo.model.components.block_transformer import (
+from octo.model_lora.components.base import TokenGroup
+from octo.model_lora.components.block_transformer import (
     AttentionRule,
     BlockTransformer,
     PrefixGroup,
@@ -84,6 +84,7 @@ class OctoTransformer(nn.Module):
     token_embedding_size: int
     max_horizon: int
     repeat_task_tokens: bool
+    hypernet_kwargs: Dict
     use_correct_attention: bool = False
 
     @nn.compact
@@ -179,6 +180,7 @@ class OctoTransformer(nn.Module):
                     mask=tokenizer_output.mask,
                     name=group_name,
                     attention_rules=task_attention_rules,
+                    token_length_mask=tasks['language_instruction']['attention_mask'],
                 )
             )
 
@@ -275,7 +277,7 @@ class OctoTransformer(nn.Module):
         ), "Already added positional embeddings to the tokens"
 
         prefix_outputs, timestep_outputs = BlockTransformer(
-            self.transformer_kwargs, use_correct_attention=self.use_correct_attention
+            self.transformer_kwargs, self.hypernet_kwargs, use_correct_attention=self.use_correct_attention
         )(
             all_prefix_groups,
             all_timestep_groups,
@@ -377,6 +379,7 @@ class OctoModule(nn.Module):
         transformer_kwargs: Dict,
         token_embedding_size: int,
         max_horizon: int,
+        hypernet_kwargs: Dict,
         repeat_task_tokens: bool = False,
         use_correct_attention: bool = False,
     ) -> "OctoModule":
@@ -419,6 +422,7 @@ class OctoModule(nn.Module):
             repeat_task_tokens=repeat_task_tokens,
             transformer_kwargs=transformer_kwargs,
             use_correct_attention=use_correct_attention,
+            hypernet_kwargs=hypernet_kwargs,
         )
 
         return cls(
