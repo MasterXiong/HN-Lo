@@ -44,6 +44,7 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string("name", "experiment", "Experiment name.")
 flags.DEFINE_bool("debug", False, "Debug config (no wandb logging)")
+flags.DEFINE_string("task_name", "pick coke can", "Task name to filter from OXE dataset")
 
 default_config_file = os.path.join(
     os.path.dirname(__file__), "configs/finetune_config.py"
@@ -172,8 +173,21 @@ def main(_):
         frame_transform_kwargs=FLAGS.config.frame_transform_kwargs,
         train=True,
     )
+
+    if 'oxe' in FLAGS.config["dataset_kwargs"]["name"]:
+        # filter by task name
+        def oxe_task_filter(traj):
+            task_name = traj['task']['language_instruction'][0]
+            return tf.equal(task_name, tf.constant(FLAGS.task_name, dtype=tf.string))
+        train_dataset = dataset.filter(oxe_task_filter).cache()
+        # randomly sample
+        train_dataset = train_dataset.shuffle(FLAGS.config.shuffle_buffer_size).take(100).cache()
+    else:
+        train_dataset = dataset
+
+    breakpoint()
     train_data_iter = (
-        dataset.repeat()
+        train_dataset.repeat()
         .unbatch()
         .shuffle(FLAGS.config.shuffle_buffer_size)
         .batch(FLAGS.config.batch_size)
@@ -181,6 +195,7 @@ def main(_):
     )
     train_data_iter = map(process_batch, train_data_iter)
     example_batch = next(train_data_iter)
+    breakpoint()
 
     #########
     #
