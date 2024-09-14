@@ -62,9 +62,6 @@ def load_model(model_name, model_path, policy_setup, input_rng = 0, step=None):
         else:
             from octo.model.octo_model import OctoModel
         tempmodel = OctoModel.load_pretrained(model_path, step=step)
-        if dataset_id not in tempmodel.dataset_statistics:
-            tempmodel.dataset_statistics = {dataset_id: tempmodel.dataset_statistics}
-        breakpoint()
         model = OctoInference(model=tempmodel, policy_setup=policy_setup, init_rng=input_rng)
     else:
         raise ValueError(model_name)
@@ -75,6 +72,8 @@ def evaluate(model_name, model_path, tasks, total_runs=10, rng_input = 42, base_
 
     previous_policy_setup = ''
     all_tasks_success_rate = dict()
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     for task_name in tasks:
 
         if "google" in task_name:
@@ -146,7 +145,7 @@ def evaluate(model_name, model_path, tasks, total_runs=10, rng_input = 42, base_
         all_tasks_success_rate[task_name] = success_count / total_runs
         print (all_tasks_success_rate)
         try:
-            with open(f'{model_path}/eval_success_rate.json', 'w') as f:
+            with open(f'{model_path}/eval_success_rate_{timestamp}.json', 'w') as f:
                 json.dump(all_tasks_success_rate, f)
         except:
             continue
