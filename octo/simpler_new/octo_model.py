@@ -46,8 +46,12 @@ class OctoInference:
         if model is not None:
             self.tokenizer, self.tokenizer_kwargs = None, None
             self.model = model
-            self.action_mean = self.model.dataset_statistics[dataset_id]["action"]["mean"]
-            self.action_std = self.model.dataset_statistics[dataset_id]["action"]["std"]
+            try:
+                self.action_mean = self.model.dataset_statistics[dataset_id]["action"]["mean"]
+                self.action_std = self.model.dataset_statistics[dataset_id]["action"]["std"]
+            except:
+                self.action_mean = self.model.dataset_statistics["action"]["mean"]
+                self.action_std = self.model.dataset_statistics["action"]["std"]
         elif model_type in ["octo-base", "octo-small"]:
             # released huggingface octo models
             self.model_type = f"hf://rail-berkeley/{model_type}"
@@ -57,7 +61,10 @@ class OctoInference:
             self.action_std = self.model.dataset_statistics[dataset_id]["action"]["std"]
         else:
             raise NotImplementedError()
-        self.action_normalization_mask = self.model.dataset_statistics[dataset_id]["action"]["mask"].astype(float)
+        try:
+            self.action_normalization_mask = self.model.dataset_statistics[dataset_id]["action"]["mask"].astype(float)
+        except:
+            self.action_normalization_mask = self.model.dataset_statistics["action"]["mask"].astype(float)
 
         self.image_size = image_size
         self.action_scale = action_scale
