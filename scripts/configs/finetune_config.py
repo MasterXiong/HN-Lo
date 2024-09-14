@@ -19,19 +19,20 @@ def get_config(config_string="head_only,language_conditioned"):
         "name": "fractal20220817_data",
         "data_dir": "/user/octo/data",
         "image_obs_keys": {"primary": "image", "wrist": None},
-        "proprio_obs_key": "proprio",
+        # "proprio_obs_key": "proprio",
         "language_key": "language_instruction",
         "action_proprio_normalization_type": "normal",
         # We want to avoid normalizing the gripper
         "action_normalization_mask": [True, True, True, True, True, True, False],
         # standardize_fn is dynamically loaded from a file
         # for example: "experiments/kevin/custom_standardization_transforms.py:aloha_dataset_transform"
-        "standardize_fn": ModuleSpec.create(
-            "octo.data.oxe.oxe_standardization_transforms:rt1_dataset_transform",
-        ),
+        # "standardize_fn": ModuleSpec.create(
+        #     "octo.data.oxe.oxe_standardization_transforms:rt1_dataset_transform",
+        # ),
+        "standardize_fn": "octo.data.oxe.oxe_standardization_transforms:rt1_dataset_transform",
         # If the default data loading speed is too slow, try these:
-        # "num_parallel_reads": 8,  # for reading from disk / GCS
-        # "num_parallel_calls": 16,  # for initial dataset construction
+        "num_parallel_reads": 16,  # for reading from disk / GCS
+        "num_parallel_calls": 16,  # for initial dataset construction
     }
 
     if mode == "full":
@@ -53,7 +54,7 @@ def get_config(config_string="head_only,language_conditioned"):
     config = dict(
         pretrained_path=placeholder(str),
         pretrained_step=placeholder(int),
-        batch_size=8,
+        batch_size=32,
         shuffle_buffer_size=10000,
         num_steps=max_steps,
         log_interval=100,
@@ -84,10 +85,10 @@ def get_config(config_string="head_only,language_conditioned"):
         ),
         val_kwargs=dict(
             val_shuffle_buffer_size=1000,
-            num_val_batches=8,
+            num_val_batches=32,
         ),
         viz_kwargs=dict(
-            eval_batch_size=8,
+            eval_batch_size=32,
             trajs_for_metrics=100,
             trajs_for_viz=8,
             samples_per_state=8,
@@ -115,7 +116,7 @@ def get_config(config_string="head_only,language_conditioned"):
             keep_image_prob=keep_image_prob,
         ),
         # If the default data loading speed is too slow, try these:
-        # num_parallel_calls=16,  # for less CPU-intensive ops
+        num_parallel_calls=16,  # for less CPU-intensive ops
     )
     workspace_augment_kwargs = dict(
         random_resized_crop=dict(scale=[0.8, 1.0], ratio=[0.9, 1.1]),
@@ -152,6 +153,7 @@ def get_config(config_string="head_only,language_conditioned"):
             primary=workspace_augment_kwargs,
             wrist=wrist_augment_kwargs,
         ),
+        num_parallel_calls=16,  # for less CPU-intensive ops
     )
     # If the default data loading speed is too slow, try these:
     config[

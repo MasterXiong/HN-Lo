@@ -44,7 +44,7 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string("name", "experiment", "Experiment name.")
 flags.DEFINE_bool("debug", False, "Debug config (no wandb logging)")
-flags.DEFINE_string("task_name", "pick coke can", "Task name to filter from OXE dataset")
+flags.DEFINE_string("task_name", None, "Task name to filter from OXE dataset")
 
 default_config_file = os.path.join(
     os.path.dirname(__file__), "configs/finetune_config.py"
@@ -167,6 +167,10 @@ def main(_):
         del batch["dataset_name"]
         return batch
 
+    standardize_fn = ModuleSpec.create(FLAGS.config["dataset_kwargs"]["standardize_fn"])
+    del FLAGS.config["dataset_kwargs"]["standardize_fn"]
+    FLAGS.config["dataset_kwargs"]["standardize_fn"] = standardize_fn
+
     dataset = make_single_dataset(
         FLAGS.config.dataset_kwargs,
         traj_transform_kwargs=FLAGS.config.traj_transform_kwargs,
@@ -174,7 +178,7 @@ def main(_):
         train=True,
     )
 
-    if 'oxe' in FLAGS.config["dataset_kwargs"]["name"]:
+    if 'oxe' in FLAGS.config["dataset_kwargs"]["name"] and FLAGS.task_name is not None:
         # filter by task name
         def oxe_task_filter(traj):
             task_name = traj['task']['language_instruction'][0]
@@ -185,7 +189,6 @@ def main(_):
     else:
         train_dataset = dataset
 
-    breakpoint()
     train_data_iter = (
         train_dataset.repeat()
         .unbatch()
@@ -195,7 +198,6 @@ def main(_):
     )
     train_data_iter = map(process_batch, train_data_iter)
     example_batch = next(train_data_iter)
-    breakpoint()
 
     #########
     #
