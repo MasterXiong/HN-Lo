@@ -967,6 +967,9 @@ def mujoco_manip_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str, Any]
     )
     return trajectory
 
+def self_generated_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str, Any]:
+    trajectory['action'] = trajectory['action'][:, :7]
+    return trajectory
 
 OXE_STANDARDIZATION_TRANSFORMS = {
     "bridge_dataset": bridge_dataset_transform,
