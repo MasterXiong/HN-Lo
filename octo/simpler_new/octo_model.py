@@ -169,7 +169,7 @@ class OctoInference:
             self.task,
             rng=key,
         )
-        raw_actions = norm_raw_actions * self.action_std[None] + self.action_mean[None]
+        raw_actions = norm_raw_actions * (self.action_std[None] + 1e-8) + self.action_mean[None]
         # use the original policy output for unnormalized action dimension
         raw_actions = raw_actions * self.action_normalization_mask + norm_raw_actions * (1. - self.action_normalization_mask)
         raw_actions = raw_actions[0]  # remove batch, becoming (action_pred_horizon, action_dim)
