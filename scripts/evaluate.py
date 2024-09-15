@@ -8,6 +8,8 @@ import simpler_env
 from simpler_env.utils.env.observation_utils import get_image_from_maniskill2_obs_dict
 import sapien.core as sapien
 
+import mediapy
+
 tasks = [
     "google_robot_pick_coke_can",
     # "google_robot_pick_horizontal_coke_can",
@@ -47,10 +49,6 @@ if len(gpus) > 0:
     )
 
 def load_model(model_name, model_path, policy_setup, input_rng = 0, step=None):
-    if policy_setup == 'widowx_bridge':
-        dataset_id = 'bridge_dataset'
-    else:
-        dataset_id = 'fractal20220817_data'
     if "rt_1" in model_name:
         from simpler_env.policies.rt1.rt1_model import RT1Inference
         ckpt_path = get_rt_1_checkpoint(model_name)
@@ -74,6 +72,11 @@ def evaluate(model_name, model_path, tasks, total_runs=10, rng_input = 42, base_
     all_tasks_success_rate = dict()
     import datetime
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    if model_path == 'hf://rail-berkeley/octo-base-1.5':
+        save_dir = 'finetune_saves/octo-base'
+        os.makedirs(save_dir, exist_ok=True)
+    else:
+        save_dir = model_path
     for task_name in tasks:
 
         if "google" in task_name:
@@ -113,7 +116,7 @@ def evaluate(model_name, model_path, tasks, total_runs=10, rng_input = 42, base_
             # TODO: support RT-1
             from collections import defaultdict
             delta = defaultdict(float)
-            while not (predicted_terminated or truncated or success):
+            while not (truncated or success):
                 # step the model; "raw_action" is raw model action output; "action" is the processed action to be sent into maniskill env
                 raw_action, action = model.step(image, instruction)
                 predicted_terminated = bool(action["terminate_episode"][0] > 0)
@@ -141,11 +144,15 @@ def evaluate(model_name, model_path, tasks, total_runs=10, rng_input = 42, base_
                 success_count += 1
                 success_timestep += timestep
             print(run+1, success_count, success_count/(run+1)*100)
+            result = 'success' if success else 'fail'
+            video_path = f"{save_dir}/video/{task_name}/{run}_{result}.mp4"
+            os.makedirs(f'{save_dir}/video/{task_name}', exist_ok=True)
+            mediapy.write_video(video_path, images, fps=10)
         env.close()
         all_tasks_success_rate[task_name] = success_count / total_runs
         print (all_tasks_success_rate)
         try:
-            with open(f'{model_path}/eval_success_rate_{timestamp}.json', 'w') as f:
+            with open(f'{save_dir}/eval_success_rate_{timestamp}.json', 'w') as f:
                 json.dump(all_tasks_success_rate, f)
         except:
             continue
