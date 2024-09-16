@@ -58,15 +58,6 @@ RUN pip install git+https://github.com/nathanrooy/simulated-annealing
 RUN pip install -e ./ManiSkill2_real2sim
 RUN pip install -e .
 
-# install Octo
-RUN pip install --upgrade "jax[cuda11_pip]==0.4.20" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-COPY ./ /user/octo
-WORKDIR /user/octo
-RUN pip install -e .
-# manually upgrade optax to version 0.2.0 to avoid error when creating TrainState
-# but may not work with lorax based on the installation warning information
-# RUN pip install optax==0.2.0
-
 # install gsutil to download OXE dataset
 # Add the Google Cloud SDK distribution URI as a package source
 RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
@@ -79,6 +70,17 @@ RUN apt-get update && apt-get install -y google-cloud-sdk
 COPY docker/nvidia_icd.json /usr/share/vulkan/icd.d/nvidia_icd.json
 COPY docker/nvidia_layers.json /etc/vulkan/implicit_layer.d/nvidia_layers.json
 ENV VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
+
+# rlds converter
+RUN git clone https://github.com/kpertsch/rlds_dataset_builder.git
+WORKDIR rlds_dataset_builder
+RUN conda env create -f environment_ubuntu.yml
+
+# install Octo
+RUN pip install --upgrade "jax[cuda11_pip]==0.4.20" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+COPY ./ /user/octo
+WORKDIR /user/octo
+RUN pip install -e .
 
 # Change permissions
 RUN useradd --shell /bin/bash -u ${USER_ID} -o -d /user user
