@@ -19,7 +19,7 @@ tasks = [
     # "google_robot_move_near_v0",
     # "google_robot_move_near_v1",
     "google_robot_move_near",
-    "google_robot_open_drawer",
+    # "google_robot_open_drawer",
     # "google_robot_open_top_drawer",
     # "google_robot_open_middle_drawer",
     # "google_robot_open_bottom_drawer",
@@ -27,15 +27,15 @@ tasks = [
     # "google_robot_close_top_drawer",
     # "google_robot_close_middle_drawer",
     # "google_robot_close_bottom_drawer",
-    "google_robot_place_in_closed_drawer",
+    # "google_robot_place_in_closed_drawer",
     # "google_robot_place_in_closed_top_drawer",
     # "google_robot_place_in_closed_middle_drawer",
     # "google_robot_place_in_closed_bottom_drawer",
-    "google_robot_place_apple_in_closed_top_drawer",
+    # "google_robot_place_apple_in_closed_top_drawer",
     "widowx_spoon_on_towel",
     "widowx_carrot_on_plate",
-    "widowx_stack_cube",
     "widowx_put_eggplant_in_basket",
+    "widowx_stack_cube",
 ]
 
 # prevent a single jax process from taking up all the GPU memory
@@ -48,7 +48,7 @@ if len(gpus) > 0:
         [tf.config.LogicalDeviceConfiguration(memory_limit=3072)],
     )
 
-def load_model(model_name, model_path, policy_setup, input_rng = 0, step=None):
+def load_model(model_name, model_path, policy_setup, input_rng=0, step=None):
     if "rt_1" in model_name:
         from simpler_env.policies.rt1.rt1_model import RT1Inference
         ckpt_path = get_rt_1_checkpoint(model_name)
@@ -66,18 +66,22 @@ def load_model(model_name, model_path, policy_setup, input_rng = 0, step=None):
     return model
 
 
-def evaluate(model_name, model_path, tasks, total_runs=10, rng_input = 42, base_path = './inference_results', checkpoint_step=None):
+def evaluate(model_name, model_path, tasks, total_runs=10, seed=0, checkpoint_step=None, eval_name=None):
 
     previous_policy_setup = ''
     all_tasks_success_rate = dict()
-    import datetime
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     if model_path == 'hf://rail-berkeley/octo-base-1.5':
         save_dir = 'finetune_saves/octo-base'
         os.makedirs(save_dir, exist_ok=True)
     else:
         save_dir = model_path
+    eval_path = f'{save_dir}/eval_{eval_name}/{seed}'
+    os.makedirs(eval_path, exist_ok=True)
+
     for task_name in tasks:
+
+        video_path = f"{eval_path}/video/{task_name}"
+        os.makedirs(video_path, exist_ok=True)
 
         if "google" in task_name:
             policy_setup = "google_robot"
@@ -86,16 +90,20 @@ def evaluate(model_name, model_path, tasks, total_runs=10, rng_input = 42, base_
 
         # reduce the number of model loading
         if policy_setup != previous_policy_setup:
-            model = load_model(model_name, model_path, policy_setup, rng_input, step=checkpoint_step)
+            model = load_model(model_name, model_path, policy_setup, seed, step=checkpoint_step)
         previous_policy_setup = policy_setup
 
+        if 'env' in locals():
+            print("Closing existing env")
+            env.close()
+            del env
         env = simpler_env.make(task_name)
 
         # turned off the denoiser as the colab kernel will crash if it's turned on
         sapien.render_config.rt_use_denoiser = False
 
         print (f'===== {task_name} =====')
-        obs, reset_info = env.reset()
+        obs, reset_info = env.reset(seed=seed)
         instruction = env.get_language_instruction()
 
         success_timestep = 0
@@ -114,11 +122,10 @@ def evaluate(model_name, model_path, tasks, total_runs=10, rng_input = 42, base_
             timestep = 0
             # TODO: env._elapsed_steps or something needs to be fixed so we don't get predicted_terminated to be true early
             # TODO: support RT-1
-            from collections import defaultdict
-            delta = defaultdict(float)
             while not (truncated or success):
                 # step the model; "raw_action" is raw model action output; "action" is the processed action to be sent into maniskill env
                 raw_action, action = model.step(image, instruction)
+                breakpoint()
                 predicted_terminated = bool(action["terminate_episode"][0] > 0)
                 if predicted_terminated:
                     if not is_final_subtask:
@@ -145,33 +152,26 @@ def evaluate(model_name, model_path, tasks, total_runs=10, rng_input = 42, base_
                 success_timestep += timestep
             print(run+1, success_count, success_count/(run+1)*100)
             result = 'success' if success else 'fail'
-            video_path = f"{save_dir}/video/{task_name}/{run}_{result}.mp4"
-            os.makedirs(f'{save_dir}/video/{task_name}', exist_ok=True)
-            mediapy.write_video(video_path, images, fps=10)
+            mediapy.write_video(f'{video_path}/{run + 1}_{result}.mp4', images, fps=10)
         env.close()
         all_tasks_success_rate[task_name] = success_count / total_runs
         print (all_tasks_success_rate)
-        try:
-            with open(f'{save_dir}/eval_success_rate_{timestamp}.json', 'w') as f:
-                json.dump(all_tasks_success_rate, f)
-        except:
-            continue
+        with open(f'{eval_path}/success_rate.json', 'w') as f:
+            json.dump(all_tasks_success_rate, f)
+
 
 
 if __name__ == '__main__':
 
-    # example command: python tools/evaluate.py --model octo-base
-    # example command: python tools/evaluate.py --model_path finetune_saves/PickCokeCan_vanilla_lora/octo_finetune/PickCokeCan_20240901_073905 --num_eval 50
-    parser = argparse.ArgumentParser(description="A simple example of argparse")
     # Add arguments
+    parser = argparse.ArgumentParser(description="A simple example of argparse")
     parser.add_argument("--model", choices=["octo-small", "octo-base", "octo-custom", "rt_1_x", "rt_1_400k"], default="octo-custom", help="The model used for evaluation")
     parser.add_argument("--model_path", type=str, default='', help="The path of the custom model (only useful for octo-custom?)")
-    parser.add_argument("--num_eval", type=int, default=53, help="Number of episodes to evaluation")
-    parser.add_argument("--rng_input", type=int, default=42, help="RNG for eval run")
-    parser.add_argument("--base_path", type=str, default='./inference_results', help="Base path to save inference results")
+    parser.add_argument("--num_eval", type=int, default=50, help="Number of episodes to evaluation")
+    parser.add_argument("--seed", type=int, default=0, help="seed for policy and env")
     parser.add_argument("--step", type=int, default=None, help="checkpoint step to evaluate")
-    
+    parser.add_argument("--eval_name", type=str, default='default', help="name of the folder to save eval results")
     # Parse the arguments
     args = parser.parse_args()
 
-    evaluate(args.model, args.model_path, tasks, total_runs=args.num_eval, rng_input = args.rng_input, base_path = args.base_path, checkpoint_step=args.step)
+    evaluate(args.model, args.model_path, tasks, total_runs=args.num_eval, seed=args.seed, checkpoint_step=args.step, eval_name=args.eval_name)
