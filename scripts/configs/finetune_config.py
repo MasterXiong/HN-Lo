@@ -16,7 +16,7 @@ def get_config(config_string="head_only,language_conditioned"):
     # and second image key should be the wrist view (None if not used)
 
     FINETUNING_KWARGS = {
-        "name": "fractal20220817_data",
+        "name": "oxe/fractal20220817_data",
         "data_dir": "/user/octo/data",
         "image_obs_keys": {"primary": "image", "wrist": None},
         # "proprio_obs_key": "proprio",
@@ -168,6 +168,14 @@ def get_config(config_string="head_only,language_conditioned"):
         context_embedding_dim=128,
         lora_rank=32,
         lora_alpha=1.,
+        context_encoder_kwargs=dict(
+            num_layers=1,
+            mlp_dim=256,
+            num_attention_heads=4,
+            dropout_rate=0.1,
+            attention_dropout_rate=0.1,
+            add_position_embedding=False,
+        )
     )
 
     return ConfigDict(config)

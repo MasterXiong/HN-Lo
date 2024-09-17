@@ -13,6 +13,7 @@ from octo.model_lora.components.block_transformer import (
     PrefixGroup,
     TimestepGroup,
 )
+from octo.model_lora.components.hypernet import Hypernet
 from octo.utils.spec import ModuleSpec
 from octo.utils.typing import Data, Sequence
 
@@ -172,7 +173,8 @@ class OctoTransformer(nn.Module):
             # task_tokens shape is (batch, n_tokens, token_embedding_size)
 
             # Add positional embedding
-            task_tokens += self._create_positional_embedding(group_name, task_tokens)
+            task_tokens_wo_pe = task_tokens
+            task_tokens = task_tokens + self._create_positional_embedding(group_name, task_tokens)
 
             all_prefix_groups.append(
                 PrefixGroup(
@@ -271,6 +273,38 @@ class OctoTransformer(nn.Module):
                 )
             )
 
+        # generate LoRA parameters with hypernet that conditions on task context and layer index
+        # or directly initialize LoRA parameters for each transformer layer
+        # TODO: for simplicity, only consider LoRA for the MLP layers for now
+        if self.hypernet_kwargs["lora_type"] == 'hypernet':
+            lora_params = Hypernet(
+                self.transformer_kwargs, 
+                self.hypernet_kwargs, 
+                self.token_embedding_size
+            )(task_tokens_wo_pe, train=train)
+        else:
+            lora_params = dict()
+            lora_params['MLP_0_lora_A'] = self.param(
+                'MLP_0_lora_A', 
+                nn.initializers.normal(stddev=1e-6), 
+                (self.transformer_kwargs["num_layers"], self.token_embedding_size, self.hypernet_kwargs["lora_rank"])
+            )
+            lora_params['MLP_0_lora_B'] = self.param(
+                'MLP_0_lora_B', 
+                nn.initializers.zeros, 
+                (self.transformer_kwargs["num_layers"], self.hypernet_kwargs["lora_rank"], self.transformer_kwargs["mlp_dim"])
+            )
+            lora_params['MLP_1_lora_A'] = self.param(
+                'MLP_1_lora_A', 
+                nn.initializers.normal(stddev=1e-6), 
+                (self.transformer_kwargs["num_layers"], self.transformer_kwargs["mlp_dim"], self.hypernet_kwargs["lora_rank"])
+            )
+            lora_params['MLP_1_lora_B'] = self.param(
+                'MLP_1_lora_B', 
+                nn.initializers.zeros, 
+                (self.transformer_kwargs["num_layers"], self.hypernet_kwargs["lora_rank"], self.token_embedding_size)
+            )
+
         # Run the transformer!
         assert (
             self.transformer_kwargs.get("add_position_embedding", False) is False
@@ -281,6 +315,7 @@ class OctoTransformer(nn.Module):
         )(
             all_prefix_groups,
             all_timestep_groups,
+            lora_params,
             train=train,
             verbose=verbose,
         )
