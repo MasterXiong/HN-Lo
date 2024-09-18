@@ -19,11 +19,11 @@ tasks = [
     # "google_robot_move_near_v0",
     # "google_robot_move_near_v1",
     "google_robot_move_near",
-    # "google_robot_open_drawer",
     # "google_robot_open_top_drawer",
     # "google_robot_open_middle_drawer",
     # "google_robot_open_bottom_drawer",
     "google_robot_close_drawer",
+    "google_robot_open_drawer",
     # "google_robot_close_top_drawer",
     # "google_robot_close_middle_drawer",
     # "google_robot_close_bottom_drawer",
@@ -32,10 +32,10 @@ tasks = [
     # "google_robot_place_in_closed_middle_drawer",
     # "google_robot_place_in_closed_bottom_drawer",
     # "google_robot_place_apple_in_closed_top_drawer",
-    "widowx_spoon_on_towel",
-    "widowx_carrot_on_plate",
-    "widowx_put_eggplant_in_basket",
-    "widowx_stack_cube",
+    # "widowx_spoon_on_towel",
+    # "widowx_carrot_on_plate",
+    # "widowx_put_eggplant_in_basket",
+    # "widowx_stack_cube",
 ]
 
 # prevent a single jax process from taking up all the GPU memory
@@ -69,16 +69,24 @@ def load_model(model_name, model_path, policy_setup, input_rng=0, step=None):
 def evaluate(model_name, model_path, tasks, total_runs=10, seed=0, checkpoint_step=None, eval_name=None):
 
     previous_policy_setup = ''
-    all_tasks_success_rate = dict()
     if model_path == 'hf://rail-berkeley/octo-base-1.5':
-        save_dir = 'finetune_saves/octo-base'
+        save_dir = 'eval_results/octo-base'
         os.makedirs(save_dir, exist_ok=True)
     else:
-        save_dir = model_path
+        save_dir = 'eval_results/' + '/'.join(model_path.split('/')[1:])
     eval_path = f'{save_dir}/eval_{eval_name}/{seed}'
     os.makedirs(eval_path, exist_ok=True)
 
+    if os.path.exists(f'{eval_path}/success_rate.json'):
+        with open(f'{eval_path}/success_rate.json', 'r') as f:
+            all_tasks_success_rate = json.load(f)
+    else:
+        all_tasks_success_rate = dict()
+
     for task_name in tasks:
+
+        if task_name in all_tasks_success_rate:
+            continue
 
         video_path = f"{eval_path}/video/{task_name}"
         os.makedirs(video_path, exist_ok=True)
@@ -125,7 +133,6 @@ def evaluate(model_name, model_path, tasks, total_runs=10, seed=0, checkpoint_st
             while not (truncated or success):
                 # step the model; "raw_action" is raw model action output; "action" is the processed action to be sent into maniskill env
                 raw_action, action = model.step(image, instruction)
-                breakpoint()
                 predicted_terminated = bool(action["terminate_episode"][0] > 0)
                 if predicted_terminated:
                     if not is_final_subtask:
