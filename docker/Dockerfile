@@ -1,9 +1,10 @@
 # Base Image
-ARG PARENT_IMAGE
+ARG PARENT_IMAGE=nvidia/cudagl:11.4.2-devel-ubuntu20.04
 FROM $PARENT_IMAGE
 
 # Args need to be below FROM!
 ARG USER_ID
+ARG GROUP_ID
 ARG PYTHON_VERSION=3.10
 
 ENV NVIDIA_DRIVER_CAPABILITIES all
@@ -83,7 +84,8 @@ WORKDIR /user/octo
 RUN pip install -e .
 
 # Change permissions
-RUN useradd --shell /bin/bash -u ${USER_ID} -o -d /user user
+RUN groupadd -g ${GROUP_ID} user
+RUN useradd --shell /bin/bash -u ${USER_ID} -g ${GROUP_ID} -o -d /user user
 RUN chown -R user:user /user && chmod -R u+w /user
 # RUN chown -R user:user / && chmod -R u+w /
 
