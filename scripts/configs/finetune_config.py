@@ -165,6 +165,7 @@ def get_config(config_string="head_only,language_conditioned"):
 
     config["hypernet_kwargs"] = dict(
         lora_type='hypernet', # "hypernet", or "vanilla"
+        encoder_type='transformer', # "transformer", "mlp"
         context_embedding_dim=128,
         lora_rank=32,
         lora_alpha=1.,
@@ -172,8 +173,8 @@ def get_config(config_string="head_only,language_conditioned"):
             num_layers=1,
             mlp_dim=256,
             num_attention_heads=4,
-            dropout_rate=0.1,
-            attention_dropout_rate=0.1,
+            dropout_rate=0.0,
+            attention_dropout_rate=0.0,
             add_position_embedding=False,
         )
     )

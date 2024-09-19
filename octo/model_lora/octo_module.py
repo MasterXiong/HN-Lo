@@ -282,7 +282,7 @@ class OctoTransformer(nn.Module):
                 self.hypernet_kwargs, 
                 self.token_embedding_size,
                 name='hypernet',
-            )(task_tokens_wo_pe, train=train)
+            )(task_tokens_wo_pe, all_prefix_groups[0].token_length_mask, train=train)
         else:
             lora_params = dict()
             lora_params['MLP_0_lora_A'] = self.param(
