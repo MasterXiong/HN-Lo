@@ -66,7 +66,7 @@ def load_model(model_name, model_path, policy_setup, input_rng=0, step=None):
     return model
 
 
-def evaluate(model_name, model_path, tasks, total_runs=10, seed=0, checkpoint_step=None, eval_name=None):
+def evaluate(model_name, model_path, tasks, total_runs=10, seed=0, checkpoint_step=None, eval_name=None, save_video=False):
 
     previous_policy_setup = ''
     if model_path == 'hf://rail-berkeley/octo-base-1.5':
@@ -158,8 +158,9 @@ def evaluate(model_name, model_path, tasks, total_runs=10, seed=0, checkpoint_st
                 success_count += 1
                 success_timestep += timestep
             print(run+1, success_count, success_count/(run+1)*100)
-            result = 'success' if success else 'fail'
-            mediapy.write_video(f'{video_path}/{run + 1}_{result}.mp4', images, fps=10)
+            if save_video:
+                result = 'success' if success else 'fail'
+                mediapy.write_video(f'{video_path}/{run + 1}_{result}.mp4', images, fps=10)
         env.close()
         all_tasks_success_rate[task_name] = success_count / total_runs
         print (all_tasks_success_rate)
@@ -178,7 +179,8 @@ if __name__ == '__main__':
     parser.add_argument("--seed", type=int, default=0, help="seed for policy and env")
     parser.add_argument("--step", type=int, default=None, help="checkpoint step to evaluate")
     parser.add_argument("--eval_name", type=str, default='default', help="name of the folder to save eval results")
+    parser.add_argument("--save_video", action='store_true', help="save evaluation video or not")
     # Parse the arguments
     args = parser.parse_args()
 
-    evaluate(args.model, args.model_path, tasks, total_runs=args.num_eval, seed=args.seed, checkpoint_step=args.step, eval_name=args.eval_name)
+    evaluate(args.model, args.model_path, tasks, total_runs=args.num_eval, seed=args.seed, checkpoint_step=args.step, eval_name=args.eval_name, save_video=args.save_video)
