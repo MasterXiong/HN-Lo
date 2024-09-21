@@ -7,7 +7,7 @@ from octo.utils.spec import ModuleSpec
 def get_config(config_string="head_only,language_conditioned"):
     mode, task = config_string.split(",")
     assert task in ["image_conditioned", "language_conditioned", "multimodal"]
-    assert mode in ["full", "head_only", "head_mlp_only"]
+    assert mode in ["full", "head_only", "head_mlp_only", "none"]
 
     # Fill this in for your own dataset!
 
@@ -44,6 +44,11 @@ def get_config(config_string="head_only,language_conditioned"):
             "octo_transformer.*",
             "heads_*.map_head.probe",
             "heads_*.map_head.MultiHeadDotProductAttention_0.*",
+        )
+    elif mode == "none":
+        frozen_keys = (
+            "octo_transformer.*",
+            "heads_*.*",
         )
     else:
         raise ValueError("Invalid mode")
