@@ -13,6 +13,7 @@ import numpy as np
 
 from octo.model_lora.components.base import TokenGroup
 from octo.model_lora.components.transformer import Transformer
+from octo.model_lora.components.hypernet import Hypernet
 
 
 class AttentionRule(Enum):
@@ -152,7 +153,6 @@ class BlockTransformer(nn.Module):
         self,
         prefix_groups: Sequence[PrefixGroup],
         timestep_groups: Sequence[TimestepGroup],
-        lora_params,
         train: bool,
         verbose: bool = False,
     ) -> Tuple[Sequence[PrefixGroup], Sequence[TimestepGroup]]:
@@ -196,6 +196,84 @@ class BlockTransformer(nn.Module):
         # Sows attention mask for ease of retrieval when debugging
         # https://flax.readthedocs.io/en/latest/api_reference/flax.linen/module.html#flax.linen.Module.sow
         self.sow("intermediates", "attention_mask", attention_mask)
+
+        # generate LoRA parameters with hypernet that conditions on task context and layer index
+        # or directly initialize LoRA parameters for each transformer layer
+        # TODO: for simplicity, only consider LoRA for the MLP layers for now
+        lora_params = dict()
+        if self.hypernet_kwargs["lora_type"] == 'hypernet':
+            if self.hypernet_kwargs["encoder_type"] == 'transformer':
+                lora_params = Hypernet(
+                    self.transformer_kwargs, 
+                    self.hypernet_kwargs, 
+                    token_embedding_size=768,
+                    name='hypernet',
+                )(prefix_groups[0].tokens, prefix_groups[0].token_length_mask, train=train)
+            elif self.hypernet_kwargs["encoder_type"] == 'mlp':
+                # generate context embedding
+                # TODO: what should be the task and layer input to HN?
+                task_instruction_length = prefix_groups[0].token_length_mask.sum(axis=-1)
+                # instruction token mean as task context: shape = batch_size * token_embedding_dim
+                task_context = (prefix_groups[0].tokens * prefix_groups[0].token_length_mask[:, :, None]).sum(axis=1) / task_instruction_length[:, None]
+                # add layer id to the context
+                task_context = jnp.repeat(task_context[:, :, None], self.transformer_kwargs["num_layers"], axis=-1)
+                layer_context = jnp.eye(self.transformer_kwargs["num_layers"])
+                layer_context = jnp.repeat(layer_context[None, :, :], task_context.shape[0], axis=0)
+                context_inputs = jnp.concatenate((task_context, layer_context), axis=1)
+                # shape: layer_num * batch_size * input_size (token_embedding_dim + layer_num)
+                context_inputs = jnp.transpose(context_inputs, (2, 0, 1))
+                # context embedding layer
+                context_embedding = nn.Dense(
+                    self.hypernet_kwargs["context_embedding_dim"],
+                    name='hypernet_context_encoder'
+                )(context_inputs)
+                # initialize matrix A following bias-init
+                lora_params['MLP_0_lora_A'] = nn.Dense(
+                    768 * self.hypernet_kwargs["lora_rank"],
+                    kernel_init=nn.initializers.zeros,
+                    bias_init=nn.initializers.normal(stddev=1e-6),
+                    name='hypernet_head_MLP_0_lora_A',
+                )(context_embedding)
+                # initialize matrix B as 0 following LoRA paper
+                lora_params['MLP_0_lora_B'] = nn.Dense(
+                    self.hypernet_kwargs["lora_rank"] * self.transformer_kwargs["mlp_dim"],
+                    kernel_init=nn.initializers.zeros,
+                    bias_init=nn.initializers.zeros,
+                    name='hypernet_head_MLP_0_lora_B',
+                )(context_embedding)
+                lora_params['MLP_1_lora_A'] = nn.Dense(
+                    self.transformer_kwargs["mlp_dim"] * self.hypernet_kwargs["lora_rank"],
+                    kernel_init=nn.initializers.zeros,
+                    bias_init=nn.initializers.normal(stddev=1e-6),
+                    name='hypernet_head_MLP_1_lora_A',
+                )(context_embedding)
+                lora_params['MLP_1_lora_B'] = nn.Dense(
+                    self.hypernet_kwargs["lora_rank"] * 768,
+                    kernel_init=nn.initializers.zeros,
+                    bias_init=nn.initializers.zeros,
+                    name='hypernet_head_MLP_1_lora_B',
+                )(context_embedding)
+        else:
+            lora_params['MLP_0_lora_A'] = self.param(
+                'MLP_0_lora_A', 
+                nn.initializers.normal(stddev=1e-6), 
+                (self.transformer_kwargs["num_layers"], 768, self.hypernet_kwargs["lora_rank"])
+            )
+            lora_params['MLP_0_lora_B'] = self.param(
+                'MLP_0_lora_B', 
+                nn.initializers.zeros, 
+                (self.transformer_kwargs["num_layers"], self.hypernet_kwargs["lora_rank"], self.transformer_kwargs["mlp_dim"])
+            )
+            lora_params['MLP_1_lora_A'] = self.param(
+                'MLP_1_lora_A', 
+                nn.initializers.normal(stddev=1e-6), 
+                (self.transformer_kwargs["num_layers"], self.transformer_kwargs["mlp_dim"], self.hypernet_kwargs["lora_rank"])
+            )
+            lora_params['MLP_1_lora_B'] = self.param(
+                'MLP_1_lora_B', 
+                nn.initializers.zeros, 
+                (self.transformer_kwargs["num_layers"], self.hypernet_kwargs["lora_rank"], 768)
+            )
 
         # Run transformer
         output = Transformer(**self.transformer_kwargs, hypernet_kwargs=self.hypernet_kwargs)(
