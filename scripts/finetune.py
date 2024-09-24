@@ -33,6 +33,8 @@ from octo.utils.train_utils import (
     TrainState,
 )
 
+from octo.model_lora.octo_model import OctoModel as NewOctoModel
+
 try:
     from jax_smi import initialise_tracking  # type: ignore
 
@@ -131,10 +133,16 @@ def main(_):
     #
     #########
 
-    pretrained_model = OctoModel.load_pretrained(
-        FLAGS.config.pretrained_path,
-        step=FLAGS.config.pretrained_step,
-    )
+    if "hypernet" in finetune_mode:
+        pretrained_model = NewOctoModel.load_pretrained(
+            FLAGS.config.pretrained_path,
+            step=FLAGS.config.pretrained_step,
+        )
+    else:
+        pretrained_model = OctoModel.load_pretrained(
+            FLAGS.config.pretrained_path,
+            step=FLAGS.config.pretrained_step,
+        )
     flat_config = flax.traverse_util.flatten_dict(
         pretrained_model.config, keep_empty_nodes=True
     )
@@ -209,7 +217,6 @@ def main(_):
     rng = jax.random.PRNGKey(FLAGS.config.seed)
     rng, init_rng = jax.random.split(rng)
     if "hypernet" in finetune_mode:
-        from octo.model_lora.octo_model import OctoModel as NewOctoModel
         config["model"]["hypernet_kwargs"] = FLAGS.config["hypernet_kwargs"].to_dict()
         model = NewOctoModel.from_config(
             config,
