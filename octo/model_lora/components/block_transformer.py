@@ -227,6 +227,7 @@ class BlockTransformer(nn.Module):
                     self.hypernet_kwargs["context_embedding_dim"],
                     name='hypernet_context_encoder'
                 )(context_inputs)
+                context_embedding = nn.relu(context_embedding)
                 # initialize matrix A following bias-init
                 lora_params['MLP_0_lora_A'] = nn.Dense(
                     768 * self.hypernet_kwargs["lora_rank"],
