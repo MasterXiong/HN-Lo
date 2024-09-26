@@ -133,7 +133,7 @@ def main(_):
     #
     #########
 
-    if "hypernet" in finetune_mode:
+    if "hypernet" in FLAGS.config.pretrained_path:
         pretrained_model = NewOctoModel.load_pretrained(
             FLAGS.config.pretrained_path,
             step=FLAGS.config.pretrained_step,
