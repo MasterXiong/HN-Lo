@@ -211,7 +211,6 @@ class BlockTransformer(nn.Module):
                 )(prefix_groups[0].tokens, prefix_groups[0].token_length_mask, train=train)
             elif self.hypernet_kwargs["encoder_type"] == 'mlp':
                 # generate context embedding
-                # TODO: what should be the task and layer input to HN?
                 task_instruction_length = prefix_groups[0].token_length_mask.sum(axis=-1)
                 # instruction token mean as task context: shape = batch_size * token_embedding_dim
                 task_context = (prefix_groups[0].tokens * prefix_groups[0].token_length_mask[:, :, None]).sum(axis=1) / task_instruction_length[:, None]
@@ -223,11 +222,12 @@ class BlockTransformer(nn.Module):
                 # shape: layer_num * batch_size * input_size (token_embedding_dim + layer_num)
                 context_inputs = jnp.transpose(context_inputs, (2, 0, 1))
                 # context embedding layer
-                context_embedding = nn.Dense(
-                    self.hypernet_kwargs["context_embedding_dim"],
-                    name='hypernet_context_encoder'
-                )(context_inputs)
-                context_embedding = nn.relu(context_embedding)
+                for i in range(self.hypernet_kwargs["mlp_context_encoder_layer_num"]):
+                    context_embedding = nn.Dense(
+                        self.hypernet_kwargs["context_embedding_dim"],
+                        name=f'hypernet_context_encoder_{i}'
+                    )(context_inputs)
+                    context_embedding = nn.relu(context_embedding)
                 # initialize matrix A following bias-init
                 lora_params['MLP_0_lora_A'] = nn.Dense(
                     768 * self.hypernet_kwargs["lora_rank"],

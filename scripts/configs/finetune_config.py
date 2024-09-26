@@ -182,6 +182,7 @@ def get_config(config_string="head_only,language_conditioned"):
             attention_dropout_rate=0.0,
             add_position_embedding=False,
         ),
+        mlp_context_encoder_layer_num=1,
         attend_to_padding=True,
         task_attend_to_layer=False,
     )
