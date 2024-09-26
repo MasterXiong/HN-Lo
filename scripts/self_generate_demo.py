@@ -8,6 +8,8 @@ import simpler_env
 from simpler_env.utils.env.observation_utils import get_image_from_maniskill2_obs_dict
 import sapien.core as sapien
 
+import gymnasium as gym
+
 # prevent a single jax process from taking up all the GPU memory
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 gpus = tf.config.list_physical_devices("GPU")
@@ -22,8 +24,8 @@ if len(gpus) > 0:
 def load_model(model_name, model_path, policy_setup, seed=0):
     if "rt_1" in model_name:
         from simpler_env.policies.rt1.rt1_model import RT1Inference
-        ckpt_path = get_rt_1_checkpoint(model_name)
-        model = RT1Inference(saved_model_path=ckpt_path, policy_setup=policy_setup)
+        # ckpt_path = get_rt_1_checkpoint(model_name)
+        model = RT1Inference(saved_model_path=model_path, policy_setup=policy_setup)
     elif "octo" in model_name:
         from octo.simpler_new.octo_model import OctoInference
         if 'hypernet' in model_path or 'vanilla_lora' in model_path:
@@ -40,6 +42,32 @@ def generate_demos(model_name, model_path, tasks, split='train', seed=0, num_of_
 
     previous_policy_setup = ''
     for task_name in tasks:
+
+        if task_name == 'google_robot_move_near':
+            source_target_id = np.array([0, 1, 2, 3, 6, 7, 8, 9])
+            episode_ids = np.concatenate([source_target_id + i * 12 for i in range(4)])
+            reset_options = episode_ids
+            num_demo_per_option = 5
+            max_trial_per_option = 150
+        elif task_name == 'google_robot_pick_object':
+            reset_options = [
+                "opened_pepsi_can",
+                # "opened_coke_can",
+                "opened_sprite_can",
+                "opened_fanta_can",
+                "opened_redbull_can",
+                "blue_plastic_bottle",
+                # "apple",
+                "orange",
+                "sponge",
+                # "bridge_spoon_generated_modified",
+                "bridge_carrot_generated_modified",
+                # "green_cube_3cm",
+                "yellow_cube_3cm",
+                "eggplant",
+            ]
+            num_demo_per_option = 10
+            max_trial_per_option = 400
 
         os.makedirs(f"data/self_generated_demo/{model_name}/{task_name}/{split}", exist_ok=True)
 
@@ -58,7 +86,12 @@ def generate_demos(model_name, model_path, tasks, split='train', seed=0, num_of_
             env.close()
             del env
 
-        env = simpler_env.make(task_name)
+        if task_name == 'google_robot_pick_object':
+            kwargs = dict()
+            kwargs["prepackaged_config"] = True
+            env = gym.make("GraspSingleCustomOrientationInScene-v0", obs_mode="rgbd", **kwargs)
+        else:
+            env = simpler_env.make(task_name)
 
         # turned off the denoiser as the colab kernel will crash if it's turned on
         sapien.render_config.rt_use_denoiser = False
@@ -70,10 +103,28 @@ def generate_demos(model_name, model_path, tasks, split='train', seed=0, num_of_
 
         success_count = 0
         total_count = 0
+        current_option = 0
+        current_option_trial_num = 0
+        current_option_success_num = 0
         while True:
-            obs, reset_info = env.reset()
+            if task_name == 'google_robot_move_near':
+                episode_id = reset_options[current_option]
+                options = {"obj_init_options": {"episode_id": episode_id}}
+                obs, reset_info = env.reset(options=options)
+            elif task_name == 'google_robot_pick_object':
+                object_id = reset_options[current_option]
+                options = {"model_id": object_id}
+                obs, reset_info = env.reset(options=options)
+            else:
+                obs, reset_info = env.reset()
             instruction = env.get_language_instruction()
             is_final_subtask = env.is_final_subtask()
+
+            # if task_name == 'google_robot_pick_object':
+            #     # do not rollout on hold-out test objects
+            #     test_objects = ['opened_coke_can', 'apple', 'bridge_spoon_generated_modified', 'green_cube_3cm']
+            #     if reset_info['model_id'] in test_objects:
+            #         continue
 
             model.reset(instruction)
             print (instruction)
@@ -104,27 +155,45 @@ def generate_demos(model_name, model_path, tasks, split='train', seed=0, num_of_
                     instruction = new_instruction
                     print (instruction)
                 is_final_subtask = env.is_final_subtask()
-                
-                tempact = np.concatenate([raw_action['world_vector'], raw_action["rotation_delta"], raw_action['open_gripper'], [int((predicted_terminated or truncated or success))]])
-                singlestep = {'image': np.asarray(image, dtype=np.uint8), 'action': np.asarray(tempact, dtype=np.float32), 'language_instruction': instruction}
+
+                if "rt_1" in model_name:
+                    singlestep = {'image': np.asarray(image, dtype=np.uint8), 'action': raw_action, 'language_instruction': instruction}
+                else:
+                    tempact = np.concatenate([raw_action['world_vector'], raw_action["rotation_delta"], raw_action['open_gripper'], [int((predicted_terminated or truncated or success))]])
+                    singlestep = {'image': np.asarray(image, dtype=np.uint8), 'action': np.asarray(tempact, dtype=np.float32), 'language_instruction': instruction}
                 episode.append(singlestep)
                 
                 image = get_image_from_maniskill2_obs_dict(env, obs)
                 images.append(image)
                 timestep += 1
-            
-            total_count += 1
+
             if success:
-                np.save(f"data/self_generated_demo/{model_name}/{task_name}/{split}/episode_{success_count}.npy", episode)
-                success_count += 1
+                if task_name == 'google_robot_move_near' or task_name == 'google_robot_pick_object':
+                    episode_id = current_option * num_demo_per_option + current_option_success_num
+                    current_option_success_num += 1
+                else:
+                    episode_id = success_count
+                    success_count += 1
+                np.save(f"data/self_generated_demo/{model_name}/{task_name}/{split}/episode_{episode_id}.npy", episode)
+
+            if task_name == 'google_robot_move_near' or task_name == 'google_robot_pick_object':
+                current_option_trial_num += 1
+                print(f'{current_option_success_num} of {current_option_trial_num} episodes success for the current option')
+                if current_option_success_num == num_demo_per_option or current_option_trial_num == max_trial_per_option:
+                    current_option += 1
+                    current_option_trial_num = 0
+                    current_option_success_num = 0
+                if current_option == len(reset_options):
+                    break
+            else:
+                total_count += 1
+                print(f'{success_count} of {total_count} episodes success')
+                if success_count == num_of_successes or total_count == total_attempts:
+                    # temparr = [totalruns, successes, successes/totalruns]
+                    # shutil.make_archive(f'{base_path}/{model_name}_episodes/{task_name}', 'zip', f'{base_path}/{model_name}_episodes/{task_name}')
+                    # np.savetxt(f"{base_path}/{model_name}_episodes/{task_name}.txt", temparr, newline=", ")
+                    break
             
-            if success_count == num_of_successes or total_count == total_attempts:
-                # temparr = [totalruns, successes, successes/totalruns]
-                # shutil.make_archive(f'{base_path}/{model_name}_episodes/{task_name}', 'zip', f'{base_path}/{model_name}_episodes/{task_name}')
-                # np.savetxt(f"{base_path}/{model_name}_episodes/{task_name}.txt", temparr, newline=", ")
-                break
-            
-            print(f'{success_count} of {total_count} episodes success')
         env.close()
 
 
