@@ -967,9 +967,27 @@ def mujoco_manip_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str, Any]
     )
     return trajectory
 
+
 def self_generated_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str, Any]:
     trajectory['action'] = trajectory['action'][:, :7]
     return trajectory
+
+
+def rtx_self_generated_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str, Any]:
+    # make gripper action absolute action, +1 = open, 0 = close
+    gripper_action = trajectory["action"]["gripper_closedness_action"][:, 0]
+    gripper_action = rel2abs_gripper_actions(gripper_action)
+
+    trajectory["action"] = tf.concat(
+        (
+            trajectory["action"]["world_vector"],
+            trajectory["action"]["rotation_delta"],
+            gripper_action[:, None],
+        ),
+        axis=-1,
+    )
+    return trajectory
+
 
 OXE_STANDARDIZATION_TRANSFORMS = {
     "bridge_dataset": bridge_dataset_transform,
