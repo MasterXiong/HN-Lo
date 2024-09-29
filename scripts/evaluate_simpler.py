@@ -214,8 +214,8 @@ if __name__ == '__main__':
         tasks = {
             "google_robot_pick_object": ("GraspSingleRandomTrainObjectInScene-v0", 50, None), 
             "google_robot_move_near": (None, len(move_task_options), move_task_options),
-            "google_robot_close_top_drawer": (None, 25),
-            "google_robot_close_bottom_drawer": (None, 25),
+            "google_robot_close_top_drawer": (None, 25, None),
+            "google_robot_close_bottom_drawer": (None, 25, None),
             # "google_robot_open_top_drawer": (None, 25),
             # "google_robot_open_middle_drawer": (None, 25),
         }
