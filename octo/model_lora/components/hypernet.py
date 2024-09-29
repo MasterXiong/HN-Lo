@@ -52,6 +52,9 @@ class Hypernet(nn.Module):
         context_embedding = output[:, -self.base_model_kwargs["num_layers"]:]
         # transpose to shape: layer_num * batch_size * context_embedding_dim
         context_embedding = jnp.transpose(context_embedding, (1, 0, 2))
+        # apply dropout to the final context embedding
+        embedding_dropout_rate = self.hypernet_kwargs.get("embedding_dropout_rate", 0.)
+        context_embedding = nn.Dropout(rate=embedding_dropout_rate)(context_embedding, deterministic=not train)
 
         # HN output heads
         lora_params = dict()
