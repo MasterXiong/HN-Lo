@@ -170,7 +170,9 @@ if __name__ == '__main__':
         source_target_id = np.array([4, 5, 10, 11])
         episode_ids = np.concatenate([source_target_id + i * 12 for i in range(4)])
         episode_ids = np.concatenate([episode_ids, np.arange(48, 60)])
-        move_task_options = np.concatenate([[i] * num_eval_per_setting_for_move for i in episode_ids])
+        move_task_options = []
+        for i in episode_ids:
+            move_task_options.extend([{"obj_init_options": {"episode_id": i}}] * num_eval_per_setting_for_move)
         # for each task, the three args corresponds to the env register name (None for using the task name), 
         # total number of evaluation, and options for each evaluation episode
         tasks = {
@@ -187,7 +189,9 @@ if __name__ == '__main__':
         num_eval_per_setting_for_move = 5
         source_target_id = np.array([0, 1, 2, 3, 6, 7, 8, 9])
         episode_ids = np.concatenate([source_target_id + i * 12 for i in range(4)])
-        move_task_options = np.concatenate([[i] * num_eval_per_setting_for_move for i in episode_ids])
+        move_task_options = []
+        for i in episode_ids:
+            move_task_options.extend([{"obj_init_options": {"episode_id": i}}] * num_eval_per_setting_for_move)
         # options for the pick task
         # reset_options = [
         #     "opened_pepsi_can",
