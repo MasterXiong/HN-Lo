@@ -12,6 +12,7 @@ import mediapy
 import gymnasium as gym
 
 import octo.simpler_new
+from octo.utils.attention import *
 
 
 # prevent a single jax process from taking up all the GPU memory
@@ -113,10 +114,14 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
 
             image = get_image_from_maniskill2_obs_dict(env, obs)  # np.ndarray of shape (H, W, 3), uint8
             images = [image]
+            images_with_attention_weights = []
             predicted_terminated, success, truncated = False, False, False
             while not (truncated or success):
                 # step the model; "raw_action" is raw model action output; "action" is the processed action to be sent into maniskill env
-                raw_action, action = model.step(image, instruction)
+                raw_action, action, action_attention_weights, resized_image = model.step(image, instruction)
+                heatmap = generate_attention_map(action_attention_weights[-1])
+                new_image = combine_image_and_heatmap(resized_image, heatmap)
+                images_with_attention_weights.append(new_image)
                 predicted_terminated = bool(action["terminate_episode"][0] > 0)
                 if predicted_terminated:
                     if not is_final_subtask:
@@ -143,7 +148,7 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
             print(run+1, success_count, success_count/(run+1)*100)
             if save_video:
                 result = 'success' if success else 'fail'
-                mediapy.write_video(f'{video_path}/{run + 1}_{result}.mp4', images, fps=10)
+                mediapy.write_video(f'{video_path}/{run + 1}_{result}.mp4', images_with_attention_weights, fps=10)
         env.close()
         all_tasks_success_rate[task_name] = [success_count / total_runs, episode_results]
         print ({key: all_tasks_success_rate[key][0] for key in all_tasks_success_rate})

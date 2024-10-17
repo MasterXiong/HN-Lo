@@ -177,7 +177,6 @@ class OctoInference:
             self.task,
             rng=key,
         )
-        breakpoint()
         raw_actions = norm_raw_actions * self.action_std[None] + self.action_mean[None]
         # use the original policy output for unnormalized action dimension
         raw_actions = raw_actions * self.action_normalization_mask + norm_raw_actions * (1. - self.action_normalization_mask)
@@ -262,7 +261,7 @@ class OctoInference:
 
         action["terminate_episode"] = np.array([0.0])
 
-        return raw_action, action
+        return raw_action, action, action_attention_weights, image
 
     def visualize_epoch(self, predicted_raw_actions: Sequence[np.ndarray], images: Sequence[np.ndarray], save_path: str) -> None:
         images = [self._resize_image(image) for image in images]
