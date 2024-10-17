@@ -172,11 +172,12 @@ class OctoInference:
         # print("octo local rng", self.rng, key)
 
         input_observation = {"image_primary": images, "timestep_pad_mask": pad_mask}
-        norm_raw_actions = self.model.sample_actions(
+        norm_raw_actions, action_attention_weights = self.model.sample_actions(
             input_observation,
             self.task,
             rng=key,
         )
+        breakpoint()
         raw_actions = norm_raw_actions * self.action_std[None] + self.action_mean[None]
         # use the original policy output for unnormalized action dimension
         raw_actions = raw_actions * self.action_normalization_mask + norm_raw_actions * (1. - self.action_normalization_mask)

@@ -158,14 +158,24 @@ class OctoModel:
         )
         _verify_shapes(tasks, "tasks", self.example_batch["task"], starting_dim=1)
 
-        return self.module.apply(
+        out, states = self.module.apply(
             {"params": self.params},
             observations,
             tasks,
             timestep_pad_mask,
             train=train,
             method="octo_transformer",
+            mutable=['intermediates'],
+            # capture_intermediates=True, 
         )
+        attention_weights = states['intermediates']['octo_transformer']['BlockTransformer_0']['Transformer_0']
+        action_attention_weights = []
+        for i in range(12):
+            w = attention_weights[f'encoderblock_{i}']['MultiHeadDotProductAttention_0']['attention_weights'][0][0, :, -1, -(1 + 16 + 256):-(1 + 16)].mean(axis=0)
+            action_attention_weights.append(w)
+        # attention weights shape: TF layer num * image token num
+        action_attention_weights = jnp.stack(action_attention_weights)
+        return out, action_attention_weights
 
     @partial(
         jax.jit,
@@ -201,7 +211,7 @@ class OctoModel:
         if timestep_pad_mask is None:
             timestep_pad_mask = observations["timestep_pad_mask"]
 
-        transformer_outputs = self.run_transformer(
+        transformer_outputs, action_attention_weights = self.run_transformer(
             observations, tasks, timestep_pad_mask, train=train
         )
         action_head: ActionHead = self.module.bind({"params": self.params}).heads[
@@ -249,7 +259,7 @@ class OctoModel:
                 )
             else:
                 raise ValueError(f"Unknown normalization type: {normalization_type}")
-        return action
+        return action, action_attention_weights
 
     @classmethod
     def load_pretrained(

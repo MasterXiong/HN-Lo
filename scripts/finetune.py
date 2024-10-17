@@ -306,7 +306,7 @@ def main(_):
 
     def loss_fn(params, batch, rng, train=True):
         bound_module = model.module.bind({"params": params}, rngs={"dropout": rng})
-        transformer_embeddings = bound_module.octo_transformer(
+        transformer_embeddings, _ = bound_module.octo_transformer(
             batch["observation"],
             batch["task"],
             batch["observation"]["timestep_pad_mask"],

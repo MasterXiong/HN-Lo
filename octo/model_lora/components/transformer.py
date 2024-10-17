@@ -181,7 +181,7 @@ class Encoder1DBlock(nn.Module):
             deterministic=deterministic,
             dropout_rate=self.attention_dropout_rate,
             num_heads=self.num_heads,
-        )(x, x, mask=attention_mask)
+        )(x, x, mask=attention_mask, sow_weights=True)
         x = nn.Dropout(rate=self.dropout_rate)(x, deterministic=deterministic)
         x = x + inputs
 
