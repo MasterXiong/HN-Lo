@@ -38,6 +38,11 @@ class OctoInference:
             action_ensemble = True
             action_ensemble_temp = 0.0
             self.sticky_gripper_num_repeat = 15
+        elif policy_setup == "libero":
+            dataset_id = "libero" if dataset_id is None else dataset_id
+            action_ensemble = True
+            action_ensemble_temp = 0.0
+            self.sticky_gripper_num_repeat = 1
         else:
             raise NotImplementedError(f"Policy setup {policy_setup} not supported for octo models.")
         self.policy_setup = policy_setup
@@ -46,12 +51,19 @@ class OctoInference:
         if model is not None:
             self.tokenizer, self.tokenizer_kwargs = None, None
             self.model = model
-            try:
+            if dataset_id in self.model.dataset_statistics:
                 self.action_mean = self.model.dataset_statistics[dataset_id]["action"]["mean"]
                 self.action_std = self.model.dataset_statistics[dataset_id]["action"]["std"]
-            except:
-                self.action_mean = self.model.dataset_statistics["action"]["mean"]
-                self.action_std = self.model.dataset_statistics["action"]["std"]
+                self.action_normalization_mask = self.model.dataset_statistics[dataset_id]["action"]["mask"].astype(float)
+            else:
+                if 'action' in self.model.dataset_statistics:
+                    self.action_mean = self.model.dataset_statistics["action"]["mean"]
+                    self.action_std = self.model.dataset_statistics["action"]["std"]
+                    self.action_normalization_mask = self.model.dataset_statistics["action"]["mask"].astype(float)
+                else:
+                    self.action_mean = np.zeros(7)
+                    self.action_std = np.ones(7)
+                    self.action_normalization_mask = np.ones(7)
         elif model_type in ["octo-base", "octo-small"]:
             # released huggingface octo models
             self.model_type = f"hf://rail-berkeley/{model_type}"
@@ -61,10 +73,6 @@ class OctoInference:
             self.action_std = self.model.dataset_statistics[dataset_id]["action"]["std"]
         else:
             raise NotImplementedError()
-        try:
-            self.action_normalization_mask = self.model.dataset_statistics[dataset_id]["action"]["mask"].astype(float)
-        except:
-            self.action_normalization_mask = self.model.dataset_statistics["action"]["mask"].astype(float)
 
         self.image_size = image_size
         self.action_scale = action_scale
@@ -169,7 +177,7 @@ class OctoInference:
             self.task,
             rng=key,
         )
-        raw_actions = norm_raw_actions * (self.action_std[None] + 1e-8) + self.action_mean[None]
+        raw_actions = norm_raw_actions * self.action_std[None] + self.action_mean[None]
         # use the original policy output for unnormalized action dimension
         raw_actions = raw_actions * self.action_normalization_mask + norm_raw_actions * (1. - self.action_normalization_mask)
         raw_actions = raw_actions[0]  # remove batch, becoming (action_pred_horizon, action_dim)
@@ -188,6 +196,7 @@ class OctoInference:
         # process raw_action to obtain the action to be sent to the maniskill2 environment
         action = {}
         action["world_vector"] = raw_action["world_vector"] * self.action_scale
+        action["rotation_delta"] = raw_action["rotation_delta"]
         action_rotation_delta = np.asarray(raw_action["rotation_delta"], dtype=np.float64)
         roll, pitch, yaw = action_rotation_delta
         action_rotation_ax, action_rotation_angle = euler2axangle(roll, pitch, yaw)
@@ -246,6 +255,9 @@ class OctoInference:
                 2.0 * (raw_action["open_gripper"] > 0.5) - 1.0
             )  # binarize gripper action to 1 (open) and -1 (close)
             # self.gripper_is_closed = (action['gripper'] < 0.0)
+        
+        elif self.policy_setup == 'libero':
+            action["gripper"] = raw_action["open_gripper"]
 
         action["terminate_episode"] = np.array([0.0])
 

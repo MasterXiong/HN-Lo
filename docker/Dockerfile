@@ -48,6 +48,7 @@ ENV PATH /opt/conda/bin:$PATH
 SHELL ["/bin/bash", "-c"]
 
 # install Simpler env
+WORKDIR /
 RUN git clone https://github.com/simpler-env/SimplerEnv --recurse-submodules
 WORKDIR SimplerEnv
 # install dependencies
@@ -73,6 +74,7 @@ COPY docker/nvidia_layers.json /etc/vulkan/implicit_layer.d/nvidia_layers.json
 ENV VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
 
 # rlds converter
+WORKDIR /
 RUN git clone https://github.com/kpertsch/rlds_dataset_builder.git
 WORKDIR rlds_dataset_builder
 RUN conda env create -f environment_ubuntu.yml
@@ -83,7 +85,18 @@ COPY ./ /user/octo
 WORKDIR /user/octo
 RUN pip install -e .
 
+# install LIBERO
+WORKDIR /
+RUN git clone https://github.com/Lifelong-Robot-Learning/LIBERO.git
+WORKDIR LIBERO
+# COPY requirements.txt ./
+# RUN pip install -r requirements.txt
+RUN pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cu113
+RUN pip install robosuite bddl easydict
+RUN pip install -e .
+
 # Change permissions
+WORKDIR /user/octo
 RUN groupadd -g ${GROUP_ID} user
 RUN useradd --shell /bin/bash -u ${USER_ID} -g ${GROUP_ID} -o -d /user user
 RUN chown -R user:user /user && chmod -R u+w /user
