@@ -43,7 +43,7 @@ def load_model(model_name, model_path, policy_setup, input_rng=0, step=None):
     return model
 
 
-def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split='train', save_video=False):
+def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split='train', save_video=False, recompute=False):
 
     previous_policy_setup = ''
     if model_path == 'hf://rail-berkeley/octo-base-1.5':
@@ -62,7 +62,7 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
 
     for task_name in tasks:
 
-        if task_name in all_tasks_success_rate:
+        if task_name in all_tasks_success_rate and not recompute:
             continue
 
         video_path = f"{eval_path}/video/{task_name}"
@@ -167,6 +167,7 @@ if __name__ == '__main__':
     parser.add_argument("--step", type=int, default=None, help="checkpoint step to evaluate")
     parser.add_argument("--split", type=str, default='train', help="evaluate on the train or test split")
     parser.add_argument("--save_video", action='store_true', help="save evaluation video or not")
+    parser.add_argument("--recompute", action='store_true', help="whether to overwrite existing eval results")
     # Parse the arguments
     args = parser.parse_args()
 
@@ -227,4 +228,4 @@ if __name__ == '__main__':
 
     seeds = [eval(seed) for seed in args.seeds.split('+')]
     for seed in seeds:
-        evaluate(args.model, args.model_path, tasks, seed=seed, checkpoint_step=args.step, split=args.split, save_video=args.save_video)
+        evaluate(args.model, args.model_path, tasks, seed=seed, checkpoint_step=args.step, split=args.split, save_video=args.save_video, recompute=args.recompute)
