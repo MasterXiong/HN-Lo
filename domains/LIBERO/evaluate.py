@@ -3,6 +3,7 @@ import numpy as np
 import os
 import tensorflow as tf
 import json
+import pickle
 
 from libero.libero import get_libero_path
 from libero.libero import benchmark
@@ -48,13 +49,19 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
     else:
         all_tasks_success_rate = dict()
 
-    # determine the task suite
-    # TODO: make task suite a choice instead of hard-coded
     benchmark_dict = benchmark.get_benchmark_dict()
-    task_suite_name = "libero_10" # can also choose libero_spatial, libero_object, etc.
-    task_suite = benchmark_dict[task_suite_name]()
+    task_suite = benchmark_dict['libero_90']()
+    all_task_names = [task.name for task in task_suite.tasks]
 
     model = load_model(model_name, model_path, seed, step=checkpoint_step)
+
+    with open('domains/LIBERO/task_split.pkl', 'rb') as f:
+        train_tasks, test_tasks = pickle.load(f)
+    if split == 'train':
+        tasks = train_tasks
+    else:
+        tasks = test_tasks
+    tasks = [all_task_names.index(task_name[:-10]) for task_name in tasks]
 
     for task_id in tasks:
 
@@ -70,11 +77,7 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
         video_path = f"{eval_path}/video/{task_name}"
         os.makedirs(video_path, exist_ok=True)
 
-        if 'env' in locals():
-            print("Closing existing env")
-            env.close()
-            del env
-
+        # approach 1: single process
         env_args = {
             "bddl_file_name": task_bddl_file,
             "camera_heights": 256,
@@ -96,19 +99,18 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
             init_state_id = run
             init_state = env.set_init_state(init_states[init_state_id])
 
-            image = init_state['agentview_image']
-            # TODO: how does the octo model deal with instruction input?
+            image = init_state['agentview_image'][::-1]  # the simulation image is up side down, need to flip manually
             images = [image]
             done = False
             for t in range(600):
                 # step the model; "raw_action" is raw model action output; "action" is the processed action to be sent into maniskill env
-                raw_action, action = model.step(image)
-                # TODO: what is the action space in libero?
+                raw_action, action, _, _ = model.step(image)
+                # TODO: action space alignment
                 obs, reward, done, info = env.step(
-                    np.concatenate([action["world_vector"], action["rot_axangle"], action["gripper"]])
+                    np.concatenate([action["world_vector"], action["rotation_delta"], action["gripper"]])
                 )
                 # update image observation
-                image = obs['agentview_image']
+                image = obs['agentview_image'][::-1]
                 images.append(image)
                 if done:
                     break
@@ -125,6 +127,62 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
         print ({key: all_tasks_success_rate[key][0] for key in all_tasks_success_rate})
         with open(f'{eval_path}/{save_file_name}.json', 'w') as f:
             json.dump(all_tasks_success_rate, f)
+
+        # # reset the model with the task instruction
+        # model.reset(task_description)
+
+        # # initialize the envs
+        # env_args = {
+        #     "bddl_file_name": task_bddl_file,
+        #     "camera_heights": 256,
+        #     "camera_widths": 256
+        # }
+        # env = SubprocVectorEnv([lambda: OffScreenRenderEnv(**env_args) for _ in range(env_num)])
+        # env.seed(0)
+        # env.reset()
+
+        # # set the initial states
+        # init_states = task_suite.get_task_init_states(task_id)
+        # indices = np.arange(env_num) % init_states.shape[0]
+        # obs = env.set_init_state(init_states[indices])
+        # breakpoint()
+        # image = obs['agentview_image']
+        # images = [image]
+
+        # for _ in range(5):  # simulate the physics without any actions
+        #     env.step(np.zeros((env_num, 7)))
+
+        # print (f'===== {task_name} =====')
+        # dones = [False] * env_num
+        # steps = 0
+        # num_success = 0
+        # # TODO: max steps
+        # while steps < cfg.eval.max_steps:
+        #     steps += 1
+        #     raw_action, action = model.step(image)
+        #     obs, reward, done, info = env.step(actions)
+        #     # check whether succeed
+        #     for k in range(env_num):
+        #         dones[k] = dones[k] or done[k]
+        #     if all(dones):
+        #         break
+        #     image = obs['agentview_image']
+        #     images.append(image)
+
+        # for k in range(env_num):
+        #     num_success += int(dones[k])
+
+        # success_rate = num_success / env_num
+        # env.close()
+
+        # if save_video:
+        #     result = 'success' if success else 'fail'
+        #     mediapy.write_video(f'{video_path}/{run + 1}_{result}.mp4', images, fps=10)
+
+        # all_tasks_success_rate[task_name] = success_rate
+        # print (all_tasks_success_rate)
+        # with open(f'{eval_path}/{save_file_name}.json', 'w') as f:
+        #     json.dump(all_tasks_success_rate, f)
 
 
 
