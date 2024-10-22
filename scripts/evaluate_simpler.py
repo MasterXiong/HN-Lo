@@ -3,6 +3,7 @@ import numpy as np
 import os
 import tensorflow as tf
 import json
+import pickle
 
 import simpler_env
 from simpler_env.utils.env.observation_utils import get_image_from_maniskill2_obs_dict
@@ -65,7 +66,7 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
         if task_name in all_tasks_success_rate and not recompute:
             continue
 
-        video_path = f"{eval_path}/video/{task_name}"
+        video_path = f"{eval_path}/video/{split}/{task_name}"
         os.makedirs(video_path, exist_ok=True)
 
         if "google" in task_name:
@@ -113,15 +114,18 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
             print (instruction)
 
             image = get_image_from_maniskill2_obs_dict(env, obs)  # np.ndarray of shape (H, W, 3), uint8
-            images = [image]
+            images = []
             images_with_attention_weights = []
+            attention_history = []
             predicted_terminated, success, truncated = False, False, False
             while not (truncated or success):
                 # step the model; "raw_action" is raw model action output; "action" is the processed action to be sent into maniskill env
                 raw_action, action, action_attention_weights, resized_image = model.step(image, instruction)
-                heatmap = generate_attention_map(action_attention_weights[-1])
+                heatmap = generate_attention_map(action_attention_weights['mean'][-1])
                 new_image = combine_image_and_heatmap(resized_image, heatmap)
+                images.append(resized_image)
                 images_with_attention_weights.append(new_image)
+                attention_history.append(action_attention_weights)
                 predicted_terminated = bool(action["terminate_episode"][0] > 0)
                 if predicted_terminated:
                     if not is_final_subtask:
@@ -141,14 +145,15 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
                 is_final_subtask = env.is_final_subtask() 
                 # update image observation
                 image = get_image_from_maniskill2_obs_dict(env, obs)
-                images.append(image)
             if success:
                 success_count += 1
             episode_results.append(success)
             print(run+1, success_count, success_count/(run+1)*100)
             if save_video:
                 result = 'success' if success else 'fail'
-                mediapy.write_video(f'{video_path}/{run + 1}_{result}.mp4', images_with_attention_weights, fps=10)
+                mediapy.write_video(f'{video_path}/{run + 1}_{result}_{instruction}.mp4', images_with_attention_weights, fps=10)
+                with open(f'{video_path}/{run + 1}.pkl', 'wb') as f:
+                    pickle.dump([images, attention_history], f)
         env.close()
         all_tasks_success_rate[task_name] = [success_count / total_runs, episode_results]
         print ({key: all_tasks_success_rate[key][0] for key in all_tasks_success_rate})

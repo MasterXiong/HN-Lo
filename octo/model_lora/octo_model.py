@@ -169,12 +169,14 @@ class OctoModel:
             # capture_intermediates=True, 
         )
         attention_weights = states['intermediates']['octo_transformer']['BlockTransformer_0']['Transformer_0']
-        action_attention_weights = []
+        action_attention_weights = {'mean': [], 'max': []}
         for i in range(12):
-            w = attention_weights[f'encoderblock_{i}']['MultiHeadDotProductAttention_0']['attention_weights'][0][0, :, -1, -(1 + 16 + 256):-(1 + 16)].mean(axis=0)
-            action_attention_weights.append(w)
+            w = attention_weights[f'encoderblock_{i}']['MultiHeadDotProductAttention_0']['attention_weights'][0][0, :, -1, -(1 + 16 + 256):-(1 + 16)]
+            w_mean = w.mean(axis=0)
+            w_max = w.max(axis=0)
+            action_attention_weights['mean'].append(w_mean)
+            action_attention_weights['max'].append(w_max)
         # attention weights shape: TF layer num * image token num
-        action_attention_weights = jnp.stack(action_attention_weights)
         return out, action_attention_weights
 
     @partial(
