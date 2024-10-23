@@ -206,6 +206,11 @@ def main(_):
     )
     train_data_iter = map(process_batch, train_data_iter)
     example_batch = next(train_data_iter)
+    # import matplotlib.pyplot as plt
+    # plt.figure()
+    # plt.imshow(example_batch['observation']['image_primary'][0, 0])
+    # plt.savefig('test.png')
+    # plt.close()
 
     #########
     #

@@ -989,6 +989,10 @@ def rtx_self_generated_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str
     return trajectory
 
 
+def libero_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str, Any]:
+    return trajectory
+
+
 OXE_STANDARDIZATION_TRANSFORMS = {
     "bridge_dataset": bridge_dataset_transform,
     "fractal20220817_data": rt1_dataset_transform,
