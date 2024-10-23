@@ -11,6 +11,7 @@ from libero.libero.envs import OffScreenRenderEnv
 
 from octo.domains.utils.multi_env_interface import OctoInference
 from octo.domains.utils.venv import SubprocVectorEnv
+from octo.utils.attention import *
 
 import mediapy
 
@@ -132,9 +133,6 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
         # approach 2: multi-processing
         # reset the model with the task instruction
         model.reset(task_description)
-        print (model.task['language_instruction']['attention_mask'].sum().item(), task_description)
-        continue
-        # breakpoint()
 
         # initialize the envs
         env_args = {
@@ -156,14 +154,20 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
 
         images = np.stack([obs[i]['agentview_image'][::-1] for i in range(len(obs))])
         images_history = [images]
+        images_with_attention_weights = []
+        attention_history = []
 
         print (f'===== {task_name} =====')
         finished_tasks = [False] * env_num
-        max_step = 100
+        max_step = 600
         episode_length = [max_step] * env_num
         # TODO: max steps
         for step in range(max_step):
-            raw_actions, actions, _, _ = model.step(images)
+            raw_actions, actions, action_attention_weights, _ = model.step(images)
+            heatmaps = generate_attention_map(action_attention_weights['mean'][-1])
+            masked_images = combine_image_and_heatmap(images, heatmaps)
+            images_with_attention_weights.append(masked_images)
+            attention_history.append(action_attention_weights)
             actions = np.concatenate([actions['world_vector'], actions['rot_axangle'], actions['gripper'].reshape(-1, 1)], axis=1)
             obs, rewards, dones, infos = env.step(actions)
             # check whether succeed
@@ -182,8 +186,10 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
         if save_video:
             for i in range(env_num):
                 result = 'success' if finished_tasks[i] else 'fail'
-                images = [x[i] for x in images_history[:episode_length[i]]]
+                images = [x[i] for x in images_with_attention_weights[:episode_length[i]]]
                 mediapy.write_video(f'{video_path}/{i + 1}_{result}.mp4', images, fps=10)
+            with open(f'{video_path}/record.pkl', 'wb') as f:
+                pickle.dump([images_history, attention_history, episode_length], f)
 
         all_tasks_success_rate[task_name] = success_rate
         print (all_tasks_success_rate)
