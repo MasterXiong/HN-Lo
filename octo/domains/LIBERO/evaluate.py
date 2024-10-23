@@ -9,7 +9,7 @@ from libero.libero import get_libero_path
 from libero.libero import benchmark
 from libero.libero.envs import OffScreenRenderEnv
 
-from octo.domains.utils.multi_env_eval import OctoInference
+from octo.domains.utils.multi_env_interface import OctoInference
 from octo.domains.utils.venv import SubprocVectorEnv
 
 import mediapy
@@ -107,7 +107,6 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
         #     for t in range(600):
         #         # step the model; "raw_action" is raw model action output; "action" is the processed action to be sent into maniskill env
         #         raw_action, action, _, _ = model.step(image)
-        #         # TODO: action space alignment
         #         obs, reward, done, info = env.step(
         #             np.concatenate([action["world_vector"], action["rotation_delta"], action["gripper"]])
         #         )
@@ -133,6 +132,9 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
         # approach 2: multi-processing
         # reset the model with the task instruction
         model.reset(task_description)
+        print (model.task['language_instruction']['attention_mask'].sum().item(), task_description)
+        continue
+        # breakpoint()
 
         # initialize the envs
         env_args = {
@@ -162,13 +164,13 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
         # TODO: max steps
         for step in range(max_step):
             raw_actions, actions, _, _ = model.step(images)
-            actions = np.concatenate([actions['world_vector'], actions['rotation_delta'], actions['gripper'].reshape(-1, 1)], axis=1)
+            actions = np.concatenate([actions['world_vector'], actions['rot_axangle'], actions['gripper'].reshape(-1, 1)], axis=1)
             obs, rewards, dones, infos = env.step(actions)
             # check whether succeed
             for k in range(env_num):
                 if dones[k]:
                     finished_tasks[k] = True
-                    episode_length[k] = step + 1
+                    episode_length[k] = min(step + 1, episode_length[k])
             if all(finished_tasks):
                 break
             images = np.stack([obs[i]['agentview_image'][::-1] for i in range(len(obs))])

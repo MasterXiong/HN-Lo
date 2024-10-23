@@ -190,7 +190,7 @@ class OctoInference:
 
         action = {}
         action["world_vector"] = raw_action["world_vector"] * self.action_scale
-        action["rotation_delta"] = raw_action["rotation_delta"]
+        action["rot_euler"] = raw_action["rotation_delta"] * self.action_scale
         action_rotation_delta = raw_action["rotation_delta"].astype(np.float64)
         action_rotation_ax, action_rotation_angle = [], []
         for i in range(action_rotation_delta.shape[0]):
@@ -204,8 +204,6 @@ class OctoInference:
         action["rot_axangle"] = action_rotation_axangle * self.action_scale
         
         if self.policy_setup == 'libero':
-            action["gripper"] = raw_action["open_gripper"]
-
-        action["terminate_episode"] = np.zeros(action["world_vector"].shape[0])
+            action["gripper"] = 2 * raw_action["open_gripper"] - 1
 
         return raw_action, action, action_attention_weights, image
