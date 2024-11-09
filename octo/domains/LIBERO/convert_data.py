@@ -18,27 +18,41 @@ def convert_action_space(actions):
     return actions
 
 
-def convert_demo_data(task_suite='libero_90'):
+def convert_demo_data(task_suite='libero_90', dataset_name=None, left_right_flip=False):
     source_folder = f'data/libero_origin/{task_suite}'
-    target_folder = f'data/libero_separate_demos/{task_suite}'
+    if dataset_name is not None:
+        target_folder = f'data/libero_separate_demos/{dataset_name}'
+    else:
+        target_folder = f'data/libero_separate_demos/{task_suite}'
     os.makedirs(target_folder, exist_ok=True)
 
-    with open('octo/domains/LIBERO/task_split.pkl', 'rb') as f:
-        train_tasks, _ = pickle.load(f)
+    if 'libero_90' in task_suite:
+        with open('octo/domains/LIBERO/task_split.pkl', 'rb') as f:
+            train_tasks, _ = pickle.load(f)
+    else:
+        train_tasks = [x for x in os.listdir(source_folder) if x.endswith('hdf5')]
 
     episode_id = 0
     for task in train_tasks:
-        print (task)
         demo_file = source_folder + '/' + task
         with h5py.File(demo_file, "r") as f:
-            problem_info = json.loads(f["data"].attrs["problem_info"])
-            language_instruction = "".join(problem_info["language_instruction"])
-            for i in range(50):
-                obs = f[f"data/demo_{i}/obs/agentview_rgb"][()]
-                actions = f[f"data/demo_{i}/actions"][()]
+            # problem_info = json.loads(f["data"].attrs["problem_info"])
+            # language_instruction = "".join(problem_info["language_instruction"])
+            if 'SCENE' in task:
+                language_instruction = ' '.join(task.split('SCENE')[-1].split('_')[1:-1])
+            else:
+                language_instruction = ' '.join(task.split('_')[:-1])
+            print (language_instruction)
+            for demo in f["data"].keys():
+                obs = f[f"data/{demo}/obs/agentview_rgb"][()]
+                if left_right_flip:
+                    obs = obs[:, ::-1, ::-1]
+                else:
+                    obs = obs[:, ::-1]
+                actions = f[f"data/{demo}/actions"][()]
                 actions = convert_action_space(actions)
                 episode_data = {
-                    'obs': obs[:, ::-1], # the demo images are up side down
+                    'obs': obs, # the demo images are up side down
                     'actions': actions, 
                     'language_instruction': language_instruction, 
                 }
@@ -59,8 +73,8 @@ def subsample_demo_data(compress_ratio=5):
 
 
 
-convert_demo_data()
-subsample_demo_data(compress_ratio=5)
+convert_demo_data('libero_goal_preprocessed', 'libero_goal_preprocessed', False)
+# subsample_demo_data(compress_ratio=5)
 
 # check image
 # file_path = '/user/octo/data/libero_separate_demos/10_demo_per_task/episode_0.npy'

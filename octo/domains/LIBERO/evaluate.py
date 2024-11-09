@@ -4,6 +4,7 @@ import os
 import tensorflow as tf
 import json
 import pickle
+import h5py
 
 from libero.libero import get_libero_path
 from libero.libero import benchmark
@@ -60,7 +61,7 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
 
     with open('octo/domains/LIBERO/task_split.pkl', 'rb') as f:
         train_tasks, test_tasks = pickle.load(f)
-    if split == 'train':
+    if 'train' in split:
         tasks = train_tasks
     else:
         tasks = test_tasks
@@ -145,11 +146,17 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
         env.reset()
 
         # set the initial states
-        init_states = task_suite.get_task_init_states(task_id)
+        if split == 'train_demo':
+            init_states = []
+            demo_file = f'data/libero_origin/libero_90/{task_name}_demo.hdf5'
+            with h5py.File(demo_file, "r") as f:
+                init_states = np.stack([f[f"data/demo_{i}/states"][0] for i in range(50)])
+        else:
+            init_states = task_suite.get_task_init_states(task_id)
         indices = np.arange(env_num) % init_states.shape[0]
         obs = env.set_init_state(init_states[indices])
 
-        for _ in range(5):  # simulate the physics without any actions
+        for _ in range(10):  # simulate the physics without any actions
             obs, _, _, _ = env.step(np.zeros((env_num, 7)))
 
         images = np.stack([obs[i]['agentview_image'][::-1] for i in range(len(obs))])
@@ -159,7 +166,7 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
 
         print (f'===== {task_name} =====')
         finished_tasks = [False] * env_num
-        max_step = 600
+        max_step = 200
         episode_length = [max_step] * env_num
         # TODO: max steps
         for step in range(max_step):
@@ -192,7 +199,9 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
                 pickle.dump([images_history, attention_history, episode_length], f)
 
         all_tasks_success_rate[task_name] = success_rate
-        print (all_tasks_success_rate)
+        sorted_scores = sorted(all_tasks_success_rate.items(), key=lambda x: x[1])
+        for x in sorted_scores:
+            print (x)
         with open(f'{eval_path}/{save_file_name}.json', 'w') as f:
             json.dump(all_tasks_success_rate, f)
 
