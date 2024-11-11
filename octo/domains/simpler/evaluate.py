@@ -12,7 +12,6 @@ import sapien.core as sapien
 import mediapy
 import gymnasium as gym
 
-import octo.simpler_new
 from octo.utils.attention import *
 
 
@@ -32,7 +31,7 @@ def load_model(model_name, model_path, policy_setup, input_rng=0, step=None):
         ckpt_path = get_rt_1_checkpoint(model_name)
         model = RT1Inference(saved_model_path=ckpt_path, policy_setup=policy_setup)
     elif "octo" in model_name:
-        from octo.simpler_new.octo_model import OctoInference
+        from octo.domains.simpler.octo_model import OctoInference
         if 'hypernet' in model_path or 'vanilla_lora' in model_path:
             from octo.model_lora.octo_model import OctoModel
         else:
