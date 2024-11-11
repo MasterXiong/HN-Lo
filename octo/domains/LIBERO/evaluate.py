@@ -37,7 +37,7 @@ def load_model(model_name, model_path, input_rng=0, step=None):
     return model
 
 
-def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split='train', save_video=False, env_num=20):
+def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=None, split='train', save_video=False, env_num=20, flipping=False):
 
     if model_path == 'hf://rail-berkeley/octo-base-1.5':
         eval_path = f'eval_results/libero/octo-base/{seed}'
@@ -53,19 +53,22 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
     else:
         all_tasks_success_rate = dict()
 
-    benchmark_dict = benchmark.get_benchmark_dict()
-    task_suite = benchmark_dict['libero_90']()
-    all_task_names = [task.name for task in task_suite.tasks]
-
     model = load_model(model_name, model_path, seed, step=checkpoint_step)
 
-    with open('octo/domains/LIBERO/task_split.pkl', 'rb') as f:
-        train_tasks, test_tasks = pickle.load(f)
-    if 'train' in split:
-        tasks = train_tasks
+    benchmark_dict = benchmark.get_benchmark_dict()
+    task_suite = benchmark_dict[task_suite_name]()
+
+    if task_suite_name == 'libero_90':
+        all_task_names = [task.name for task in task_suite.tasks]
+        with open('octo/domains/LIBERO/task_split.pkl', 'rb') as f:
+            train_tasks, test_tasks = pickle.load(f)
+        if 'train' in split:
+            tasks = train_tasks
+        else:
+            tasks = test_tasks
+        tasks = [all_task_names.index(task_name[:-10]) for task_name in tasks]
     else:
-        tasks = test_tasks
-    tasks = [all_task_names.index(task_name[:-10]) for task_name in tasks]
+        tasks = list(range(task_suite.get_num_tasks()))
 
     for task_id in tasks:
 
@@ -159,7 +162,10 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
         for _ in range(10):  # simulate the physics without any actions
             obs, _, _, _ = env.step(np.zeros((env_num, 7)))
 
-        images = np.stack([obs[i]['agentview_image'][::-1] for i in range(len(obs))])
+        if flipping:
+            images = np.stack([obs[i]['agentview_image'][::-1, ::-1] for i in range(len(obs))])
+        else:
+            images = np.stack([obs[i]['agentview_image'][::-1] for i in range(len(obs))])
         images_history = [images]
         images_with_attention_weights = []
         attention_history = []
@@ -184,7 +190,10 @@ def evaluate(model_name, model_path, tasks, seed=0, checkpoint_step=None, split=
                     episode_length[k] = min(step + 1, episode_length[k])
             if all(finished_tasks):
                 break
-            images = np.stack([obs[i]['agentview_image'][::-1] for i in range(len(obs))])
+            if flipping:
+                images = np.stack([obs[i]['agentview_image'][::-1, ::-1] for i in range(len(obs))])
+            else:
+                images = np.stack([obs[i]['agentview_image'][::-1] for i in range(len(obs))])
             images_history.append(images)
 
         success_rate = sum(finished_tasks) / env_num
@@ -213,14 +222,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="A simple example of argparse")
     parser.add_argument("--model", choices=["octo-small", "octo-base", "octo-custom", "rt_1_x", "rt_1_400k"], default="octo-custom", help="The model used for evaluation")
     parser.add_argument("--model_path", type=str, default='', help="The path of the custom model (only useful for octo-custom?)")
+    parser.add_argument("--task_suite_name", type=str, default='libero_90', help="the task suite to evaluate on")
     parser.add_argument("--seeds", type=str, default='0+1+2+3', help="seeds for policy and env")
     parser.add_argument("--step", type=int, default=None, help="checkpoint step to evaluate")
     parser.add_argument("--split", type=str, default='train', help="evaluate on the train or test split")
     parser.add_argument("--save_video", action='store_true', help="save evaluation video or not")
+    parser.add_argument("--flipping", action='store_true', help="flip the left and right side of the image or not")
     # Parse the arguments
     args = parser.parse_args()
 
     seeds = [eval(seed) for seed in args.seeds.split('+')]
-    tasks = [0]
     for seed in seeds:
-        evaluate(args.model, args.model_path, tasks, seed=seed, checkpoint_step=args.step, split=args.split, save_video=args.save_video)
+        evaluate(args.model, args.model_path, args.task_suite_name, seed=seed, checkpoint_step=args.step, split=args.split, save_video=args.save_video, flipping=args.flipping)
