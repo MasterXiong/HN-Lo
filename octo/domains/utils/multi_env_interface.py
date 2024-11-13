@@ -1,16 +1,14 @@
 from collections import deque
-from typing import Optional, Sequence
+from typing import Optional
 import os
 
 import jax
-import matplotlib.pyplot as plt
 import numpy as np
 from octo.model.octo_model import OctoModel
 import tensorflow as tf
-from transformers import AutoTokenizer
 from transforms3d.euler import euler2axangle
 
-from simpler_env.utils.action.action_ensemble import ActionEnsembler
+from octo.domains.utils.action_ensemble import BatchActionEnsembler
 
 
 class OctoInference:
@@ -26,11 +24,11 @@ class OctoInference:
         image_size: int = 256,
         action_scale: float = 1.0,
         init_rng: int = 0,
+        action_ensemble: bool = False,
     ) -> None:
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
         if policy_setup == "libero":
             dataset_id = "libero" if dataset_id is None else dataset_id
-            action_ensemble = False
             action_ensemble_temp = 0.0
             # self.sticky_gripper_num_repeat = 1
         else:
@@ -86,7 +84,7 @@ class OctoInference:
         self.task_description = None
         self.image_history = deque(maxlen=self.horizon)
         if self.action_ensemble:
-            self.action_ensembler = ActionEnsembler(self.pred_action_horizon, self.action_ensemble_temp)
+            self.action_ensembler = BatchActionEnsembler(self.pred_action_horizon, self.action_ensemble_temp)
         else:
             self.action_ensembler = None
         self.num_image_history = 0
@@ -178,7 +176,6 @@ class OctoInference:
         # assert raw_actions.shape == (self.pred_action_horizon, 7)
         if self.action_ensemble:
             raw_actions = self.action_ensembler.ensemble_action(raw_actions)
-            raw_actions = raw_actions[None]  # [1, 7]
         else:
             raw_actions = raw_actions[:, 0]
 
