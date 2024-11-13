@@ -124,6 +124,8 @@ def get_config(config_string="head_only,language_conditioned"):
         num_parallel_calls=16,  # for less CPU-intensive ops
     )
     workspace_augment_kwargs = dict(
+        # scale is the size of the image after cropping
+        # ratio is the ratio between width and height of the cropped image, i.e., ratio larger than 1 leads to wider image
         random_resized_crop=dict(scale=[0.8, 1.0], ratio=[0.9, 1.1]),
         random_brightness=[0.1],
         random_contrast=[0.9, 1.1],

@@ -25,6 +25,7 @@ class OctoInference:
         action_scale: float = 1.0,
         init_rng: int = 0,
         action_ensemble: bool = False,
+        crop: bool = False,
     ) -> None:
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
         if policy_setup == "libero":
@@ -88,8 +89,14 @@ class OctoInference:
         else:
             self.action_ensembler = None
         self.num_image_history = 0
+        self.crop = crop
 
     def _resize_image(self, image: np.ndarray) -> np.ndarray:
+        if self.crop:
+            scale = 0.9
+            offset = int((1 - scale) / 2 * self.image_size + 0.5)
+            target_size = int(scale * self.image_size + 0.5)
+            image = tf.image.crop_to_bounding_box(image, offset, offset, target_size, target_size)
         image = tf.image.resize(
             image,
             size=(self.image_size, self.image_size),

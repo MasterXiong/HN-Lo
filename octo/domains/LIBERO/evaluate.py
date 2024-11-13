@@ -27,17 +27,17 @@ if len(gpus) > 0:
         [tf.config.LogicalDeviceConfiguration(memory_limit=3072)],
     )
 
-def load_model(model_name, model_path, input_rng=0, step=None, action_ensemble=False):
+def load_model(model_name, model_path, input_rng=0, step=None, action_ensemble=False, crop=False):
     if 'hypernet' in model_path or 'vanilla_lora' in model_path:
         from octo.model_lora.octo_model import OctoModel
     else:
         from octo.model.octo_model import OctoModel
     tempmodel = OctoModel.load_pretrained(model_path, step=step)
-    model = OctoInference(model=tempmodel, policy_setup='libero', init_rng=input_rng, action_ensemble=action_ensemble)
+    model = OctoInference(model=tempmodel, policy_setup='libero', init_rng=input_rng, action_ensemble=action_ensemble, crop=crop)
     return model
 
 
-def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=None, split='train', save_video=False, env_num=20, action_ensemble=False, flipping=False):
+def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=None, split='train', save_video=False, env_num=20, action_ensemble=False, flipping=False, crop=False):
 
     if model_path == 'hf://rail-berkeley/octo-base-1.5':
         eval_path = f'eval_results/libero/octo-base/{seed}'
@@ -49,13 +49,15 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
     save_file_name = f'success_rate_{split}'
     if action_ensemble:
         save_file_name += '_action_ensemble'
+    if crop:
+        save_file_name += '_crop'
     if os.path.exists(f'{eval_path}/{save_file_name}.json'):
         with open(f'{eval_path}/{save_file_name}.json', 'r') as f:
             all_tasks_success_rate = json.load(f)
     else:
         all_tasks_success_rate = dict()
 
-    model = load_model(model_name, model_path, seed, step=checkpoint_step, action_ensemble=action_ensemble)
+    model = load_model(model_name, model_path, seed, step=checkpoint_step, action_ensemble=action_ensemble, crop=crop)
 
     benchmark_dict = benchmark.get_benchmark_dict()
     task_suite = benchmark_dict[task_suite_name]()
@@ -179,10 +181,10 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
         # TODO: max steps
         for step in range(max_step):
             raw_actions, actions, action_attention_weights, _ = model.step(images)
-            heatmaps = generate_attention_map(action_attention_weights['mean'][-1])
-            masked_images = combine_image_and_heatmap(images, heatmaps)
-            images_with_attention_weights.append(masked_images)
-            attention_history.append(action_attention_weights)
+            # heatmaps = generate_attention_map(action_attention_weights['mean'][-1])
+            # masked_images = combine_image_and_heatmap(images, heatmaps)
+            # images_with_attention_weights.append(masked_images)
+            # attention_history.append(action_attention_weights)
             actions = np.concatenate([actions['world_vector'], actions['rot_axangle'], actions['gripper'].reshape(-1, 1)], axis=1)
             obs, rewards, dones, infos = env.step(actions)
             # check whether succeed
@@ -199,7 +201,7 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
             images_history.append(images)
 
         success_rate = sum(finished_tasks) / env_num
-        env.close()
+        # env.close()
 
         if save_video:
             for i in range(env_num):
@@ -231,9 +233,10 @@ if __name__ == '__main__':
     parser.add_argument("--save_video", action='store_true', help="save evaluation video or not")
     parser.add_argument("--flipping", action='store_true', help="flip the left and right side of the image or not")
     parser.add_argument("--action_ensemble", action='store_true', help="Use action ensemble or not")
+    parser.add_argument("--crop", action='store_true', help="Whether to crop the image or not")
     # Parse the arguments
     args = parser.parse_args()
 
     seeds = [eval(seed) for seed in args.seeds.split('+')]
     for seed in seeds:
-        evaluate(args.model, args.model_path, args.task_suite_name, seed=seed, checkpoint_step=args.step, split=args.split, save_video=args.save_video, flipping=args.flipping, action_ensemble=args.action_ensemble)
+        evaluate(args.model, args.model_path, args.task_suite_name, seed=seed, checkpoint_step=args.step, split=args.split, save_video=args.save_video, flipping=args.flipping, action_ensemble=args.action_ensemble, crop=args.crop)
