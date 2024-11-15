@@ -43,7 +43,7 @@ def load_model(model_name, model_path, input_rng=0, step=None, action_ensemble=F
     return model
 
 
-def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=None, split='train', save_video=False, env_num=20, action_ensemble=False, flipping=False, crop=False, image_horizon=2):
+def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=None, split='train', save_video=False, env_num=20, action_ensemble=False, flipping=False, crop=False, image_horizon=2, recompute=False):
 
     if model_path == 'hf://rail-berkeley/octo-base-1.5':
         eval_path = f'eval_results/libero/octo-base/{seed}'
@@ -82,6 +82,9 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
     else:
         tasks = list(range(task_suite.get_num_tasks()))
 
+    with open('octo/domains/LIBERO/task_demo_length.pkl', 'rb') as f:
+        task_demo_length = pickle.load(f)
+
     for task_id in tasks:
 
         # retrieve a specific task
@@ -90,7 +93,7 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
         task_description = task.language
         task_bddl_file = os.path.join(get_libero_path("bddl_files"), task.problem_folder, task.bddl_file)
 
-        if task_name in all_tasks_success_rate:
+        if task_name in all_tasks_success_rate and not recompute:
             continue
 
         video_path = f"{eval_path}/video/{split}/{task_name}"
@@ -184,9 +187,8 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
 
         print (f'===== {task_name} =====')
         finished_tasks = [False] * env_num
-        max_step = 200
+        max_step = task_demo_length[task_name] + 30
         episode_length = [max_step] * env_num
-        # TODO: max steps
         for step in range(max_step):
             raw_actions, actions, action_attention_weights, _ = model.step(images)
             # heatmaps = generate_attention_map(action_attention_weights['mean'][-1])
@@ -214,10 +216,11 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
         if save_video:
             for i in range(env_num):
                 result = 'success' if finished_tasks[i] else 'fail'
-                images = [x[i] for x in images_with_attention_weights[:episode_length[i]]]
+                # images = [x[i] for x in images_with_attention_weights[:episode_length[i]]]
+                images = [x[i] for x in images_history[:episode_length[i]]]
                 mediapy.write_video(f'{video_path}/{i + 1}_{result}.mp4', images, fps=10)
-            with open(f'{video_path}/record.pkl', 'wb') as f:
-                pickle.dump([images_history, attention_history, episode_length], f)
+            # with open(f'{video_path}/record.pkl', 'wb') as f:
+            #     pickle.dump([images_history, attention_history, episode_length], f)
 
         all_tasks_success_rate[task_name] = success_rate
         sorted_scores = sorted(all_tasks_success_rate.items(), key=lambda x: x[1])
@@ -243,9 +246,10 @@ if __name__ == '__main__':
     parser.add_argument("--action_ensemble", action='store_true', help="Use action ensemble or not")
     parser.add_argument("--crop", action='store_true', help="Whether to crop the image or not")
     parser.add_argument("--image_horizon", type=int, default=2, help="The horizon of image history")
+    parser.add_argument("--recompute", action='store_true', help="Whether to recompute for existing results")
     # Parse the arguments
     args = parser.parse_args()
 
     seeds = [eval(seed) for seed in args.seeds.split('+')]
     for seed in seeds:
-        evaluate(args.model, args.model_path, args.task_suite_name, seed=seed, checkpoint_step=args.step, split=args.split, save_video=args.save_video, flipping=args.flipping, action_ensemble=args.action_ensemble, crop=args.crop, image_horizon=args.image_horizon)
+        evaluate(args.model, args.model_path, args.task_suite_name, seed=seed, checkpoint_step=args.step, split=args.split, save_video=args.save_video, flipping=args.flipping, action_ensemble=args.action_ensemble, crop=args.crop, image_horizon=args.image_horizon, recompute=args.recompute)
