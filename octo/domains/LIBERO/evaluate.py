@@ -214,6 +214,7 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
         # env.close()
 
         if save_video:
+            os.system(f'rm {video_path}/*.mp4')
             for i in range(env_num):
                 result = 'success' if finished_tasks[i] else 'fail'
                 # images = [x[i] for x in images_with_attention_weights[:episode_length[i]]]

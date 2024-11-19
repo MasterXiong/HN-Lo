@@ -61,20 +61,18 @@ def convert_demo_data(task_suite='libero_90', dataset_name=None, left_right_flip
 
 
 # generate a smaller training set
-def subsample_demo_data(compress_ratio=5):
-    source_folder = 'data/libero_separate_demos/libero_90'
-    num_demo_per_task = 50 // compress_ratio
-    target_folder = f'data/libero_separate_demos/{num_demo_per_task}_demo_per_task'
+def subsample_demo_data(source_folder, target_folder, compress_ratio=5):
+    source_folder = f'data/libero_separate_demos/{source_folder}'
+    target_folder = f'data/libero_separate_demos/{target_folder}'
     os.makedirs(target_folder, exist_ok=True)
-
     sample_idx = list(range(len(os.listdir(source_folder))))[::compress_ratio]
     for idx in sample_idx:
         os.system(f'cp {source_folder}/episode_{idx}.npy {target_folder}/')
 
 
 
-convert_demo_data('libero_goal_preprocessed', 'libero_goal_preprocessed', False)
-# subsample_demo_data(compress_ratio=5)
+# convert_demo_data('libero_goal_preprocessed', 'libero_goal_preprocessed', False)
+subsample_demo_data('libero_90_preprocessed', 'libero_90_preprocessed_compress_10', compress_ratio=10)
 
 # check image
 # file_path = '/user/octo/data/libero_separate_demos/10_demo_per_task/episode_0.npy'
