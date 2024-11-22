@@ -3,6 +3,7 @@ Contains basic logic for randomly zero-ing out keys in the task specification.
 """
 
 import pickle
+import json
 
 from huggingface_hub import hf_hub_download
 import tensorflow as tf
@@ -12,10 +13,10 @@ from octo.data.utils.data_utils import to_padding
 
 def delete_and_rephrase(
     traj,
-    paraphrases_repo: str,
-    paraphrases_filename: str,
-    rephrase_prob: float,
     keep_image_prob: float,
+    paraphrases_repo: str = None,
+    paraphrases_filename: str = None,
+    rephrase_prob: float = 0.8,
 ):
     traj = rephrase_instruction(
         traj, paraphrases_repo, paraphrases_filename, rephrase_prob
@@ -35,23 +36,35 @@ class Rephraser:
         hash_table = tf.lookup.StaticHashTable(initializer, default_value="")
         return hash_table
 
-    def __init__(self, paraphrases_repo: str, paraphrases_filename: str):
-        if isinstance(paraphrases_repo, str) and isinstance(paraphrases_filename, str):
-            with open(
-                hf_hub_download(
-                    repo_id=paraphrases_repo,
-                    filename=paraphrases_filename,
-                    repo_type="dataset",
-                ),
-                "rb",
-            ) as file:
-                lang_paraphrases = pickle.load(file)
-                # Create StaticHashTable
-                self.rephrase_lookup = self.create_static_hash_table(lang_paraphrases)
+    def __init__(self, rephrase_file_path):
+        with open(rephrase_file_path, 'r') as f:
+            lang_paraphrases = json.load(f)
+        for key in lang_paraphrases:
+            lang_paraphrases[key] = '.'.join(lang_paraphrases[key][1:])
+        # Create StaticHashTable
+        self.rephrase_lookup = self.create_static_hash_table(lang_paraphrases)
+
+    # def __init__(self, paraphrases_repo: str, paraphrases_filename: str):
+    #     if isinstance(paraphrases_repo, str) and isinstance(paraphrases_filename, str):
+    #         with open(
+    #             hf_hub_download(
+    #                 repo_id=paraphrases_repo,
+    #                 filename=paraphrases_filename,
+    #                 repo_type="dataset",
+    #             ),
+    #             "rb",
+    #         ) as file:
+    #             lang_paraphrases = pickle.load(file)
+    #             # Create StaticHashTable
+    #             self.rephrase_lookup = self.create_static_hash_table(lang_paraphrases)
 
 
 def rephrase_instruction(
-    traj: dict, paraphrases_repo: str, paraphrases_filename: str, rephrase_prob: float
+    traj: dict, 
+    paraphrases_repo: str = None, 
+    paraphrases_filename: str = None, 
+    rephrase_prob: float = 0.8, 
+    rephrase_file_path: str = '/user/octo/octo/domains/rlds_converter/libero_dataset/rephrase.json'
 ) -> dict:
     """Randomly rephrases language instructions with precomputed paraphrases
     Args:
@@ -61,7 +74,8 @@ def rephrase_instruction(
        rephrase_prob: The probability of augmenting the language instruction. The probability of keeping the language
            instruction is 1 - rephrase_prob.
     """
-    rephraser = Rephraser(paraphrases_repo, paraphrases_filename)
+    rephraser = Rephraser(rephrase_file_path)
+    # rephraser = Rephraser(paraphrases_repo, paraphrases_filename)
 
     if "language_instruction" not in traj["task"]:
         return traj
