@@ -76,9 +76,13 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
             train_tasks, test_tasks = pickle.load(f)
         if 'train' in split:
             tasks = train_tasks
-        else:
+            tasks = [all_task_names.index(task_name[:-10]) for task_name in tasks]
+        elif split == 'test':
             tasks = test_tasks
-        tasks = [all_task_names.index(task_name[:-10]) for task_name in tasks]
+            tasks = [all_task_names.index(task_name[:-10]) for task_name in tasks]
+        elif split == 'single_task':
+            # TODO: hardcode task name parsing for now
+            tasks = [all_task_names.index(model_path.split('/')[2])]
     else:
         tasks = list(range(task_suite.get_num_tasks()))
 
