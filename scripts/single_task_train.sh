@@ -18,12 +18,12 @@ for i in "${!tasks[@]}"; do
   CUDA_VISIBLE_DEVICES=$i python ./scripts/finetune.py \
     --config=scripts/configs/finetune_config.py:head_only,language_conditioned \
     --config.pretrained_path=hf://rail-berkeley/octo-base-1.5 \
-    --config.dataset_kwargs.name=libero_single_task/$task \
-    --config.save_dir=/user/octo/finetune_saves/libero_single_task/$task \
+    --config.dataset_kwargs.name=libero_single_task_10_demos/$task \
+    --config.save_dir=/user/octo/finetune_saves/libero_single_task_10_demos/$task \
     --name='vanilla_lora_48_rank_100k_steps_32_batch' \
     --config.finetuning_mode='hypernet' --config.hypernet_kwargs.lora_type='vanilla' \
     --config.hypernet_kwargs.lora_rank=48 --config.batch_size=32 \
-    --config.num_steps=100000 --config.save_interval=20000 \
+    --config.num_steps=100000 --config.save_interval=10000 \
     --config.dataset_kwargs.standardize_fn octo.data.oxe.oxe_standardization_transforms:libero_dataset_transform \
     --debug &
 done
