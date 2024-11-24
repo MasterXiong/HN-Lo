@@ -1,4 +1,5 @@
 import os
+import argparse
 
 
 # List of tasks to train on
@@ -13,14 +14,26 @@ tasks=[
     "STUDY_SCENE3_pick_up_the_white_mug_and_place_it_to_the_right_of_the_caddy"
 ]
 
-step_num = 100000
-# num_parallel = 4
-setup = 'libero_single_task_10_demos'
 
-for task in tasks:
-    model_path = os.listdir(f'finetune_saves/{setup}/{task}/octo_finetune')[0]
-    model_path = f'finetune_saves/{setup}/{task}/octo_finetune/' + model_path
-    command = f'python octo/domains/LIBERO/evaluate.py \
-        --model octo-custom --model_path {model_path} \
-        --step {step_num} --split single_task --seed 0 --action_ensemble --image_horizon 1'
-    os.system(command)
+def evaluate(setup, step_num=100000):
+    for task in tasks:
+        model_paths = sorted(os.listdir(f'finetune_saves/{setup}/{task}/octo_finetune'))
+        for model_path in model_paths:
+            path = f'finetune_saves/{setup}/{task}/octo_finetune/' + model_path
+            if not os.path.exists(f'{path}/{step_num}'):
+                continue
+            command = f'python octo/domains/LIBERO/evaluate.py \
+                --model octo-custom --model_path {path} \
+                --step {step_num} --split single_task --seed 0 --action_ensemble --image_horizon 1'
+            os.system(command)
+
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--setup", type=str, default="libero_single_task")
+    parser.add_argument('--step_num', type=int, default=100000)
+    args = parser.parse_args()
+
+    evaluate(args.setup, args.step_num)
