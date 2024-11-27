@@ -168,6 +168,7 @@ class OctoTransformer(nn.Module):
                 logging.warning(f"Skipping task tokenizer: {group_name}")
                 continue
 
+            original_tokens = tokenizer_output.tokens
             task_tokens = nn.Dense(
                 self.token_embedding_size, name=f"{group_name}_projection"
             )(tokenizer_output.tokens)
@@ -224,14 +225,14 @@ class OctoTransformer(nn.Module):
                 "repeating task tokens at each timestep to perform cross-modal attention"
             )
             # get task tokens
-            for tasks in all_prefix_groups:
+            for task_group in all_prefix_groups:
                 # lang (batch, n_tokens, token_embedding_size)
-                task_tokens = tasks.tokens[:, jnp.newaxis, :, :]
+                task_tokens = task_group.tokens[:, jnp.newaxis, :, :]
                 ws = all_timestep_groups[0].tokens.shape[1]
                 task_tokens = jnp.tile(task_tokens, [1, ws, 1, 1])
-                task_pad_mask = tasks.mask[:, jnp.newaxis, :]
+                task_pad_mask = task_group.mask[:, jnp.newaxis, :]
                 task_pad_mask = jnp.tile(task_pad_mask, [1, ws, 1])
-                group_name = f"obs_{tasks.name}"
+                group_name = f"obs_{task_group.name}"
                 all_timestep_groups.append(
                     TimestepGroup(
                         tokens=task_tokens,
@@ -284,7 +285,7 @@ class OctoTransformer(nn.Module):
                     self.hypernet_kwargs, 
                     token_embedding_size=768,
                     name='hypernet',
-                )(prefix_groups[0].tokens, prefix_groups[0].token_length_mask, train=train)
+                )(original_tokens, tasks['language_instruction']['attention_mask'], train=train)
         else:
             lora_params['MLP_0_lora_A'] = self.param(
                 'MLP_0_lora_A', 
@@ -317,6 +318,7 @@ class OctoTransformer(nn.Module):
         )(
             all_prefix_groups,
             all_timestep_groups,
+            lora_params,
             train=train,
             verbose=verbose,
         )

@@ -29,7 +29,10 @@ if len(gpus) > 0:
 
 def load_model(model_name, model_path, input_rng=0, step=None, action_ensemble=False, crop=False, image_horizon=2):
     if 'hypernet' in model_path or 'vanilla_lora' in model_path:
-        from octo.model_lora.octo_model import OctoModel
+        if 'v2' in model_path:
+            from octo.model_lora_v2.octo_model import OctoModel
+        else:
+            from octo.model_lora.octo_model import OctoModel
     else:
         from octo.model.octo_model import OctoModel
     tempmodel = OctoModel.load_pretrained(model_path, step=step)

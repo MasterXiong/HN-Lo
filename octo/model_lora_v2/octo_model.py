@@ -16,8 +16,8 @@ import tensorflow as tf
 
 from octo.data.utils.data_utils import NormalizationType
 from octo.data.utils.text_processing import TextProcessor
-from octo.model_lora.components.action_heads import ActionHead
-from octo.model_lora.octo_module import OctoModule
+from octo.model_lora_v2.components.action_heads import ActionHead
+from octo.model_lora_v2.octo_module import OctoModule
 from octo.utils.spec import ModuleSpec
 from octo.utils.typing import Config, Data, Params, PRNGKey, Sequence
 
