@@ -128,13 +128,19 @@ def add_pad_mask_dict(traj: dict) -> dict:
 
 
 def pad_actions_and_proprio(
-    traj: dict, max_action_dim: Optional[int], max_proprio_dim: Optional[int]
+    traj: dict, max_action_dim: Optional[int], max_proprio_dim: Optional[int], action_pad_mask=None
 ) -> dict:
     """Pads actions and proprio to a maximum number of dimensions across all datasets.
 
     Records which action dimensions are padding in "action_pad_mask".
     """
-    traj["action_pad_mask"] = tf.ones_like(traj["action"], dtype=tf.bool)
+    if action_pad_mask is not None:
+        mask = tf.convert_to_tensor(action_pad_mask, dtype=tf.bool)
+        mask = tf.expand_dims(mask, axis=0)
+        traj["action_pad_mask"] = tf.tile(mask, [tf.shape(traj["action"])[0], 1])
+    else:
+        traj["action_pad_mask"] = tf.ones_like(traj["action"], dtype=tf.bool)
+
     if max_action_dim is not None:
         action_dim = traj["action"].shape[-1]
         if action_dim > max_action_dim:

@@ -993,6 +993,20 @@ def libero_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str, Any]:
     return trajectory
 
 
+def metaworld_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str, Any]:
+    # metaworld uses 0 for gripper open, and 1 for close; so need to reverse it
+    # make gripper action absolute action, +1 = open, 0 = close
+    trajectory["action"] = tf.concat(
+        (
+            trajectory["action"][:, :3], # position delta
+            tf.zeros([tf.shape(trajectory["action"])[0], 3], dtype=trajectory["action"].dtype), # placeholder for orientation delta
+            1. - tf.round(trajectory["action"][:, 3:]), # gripper
+        ), 
+        axis=-1, 
+    )
+    return trajectory
+
+
 OXE_STANDARDIZATION_TRANSFORMS = {
     "bridge_dataset": bridge_dataset_transform,
     "fractal20220817_data": rt1_dataset_transform,

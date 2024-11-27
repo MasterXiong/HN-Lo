@@ -40,6 +40,7 @@ def apply_trajectory_transforms(
     max_proprio_dim: Optional[int] = None,
     post_chunk_transforms: Sequence[ModuleSpec] = (),
     num_parallel_calls: int = tf.data.AUTOTUNE,
+    action_pad_mask = None, 
 ) -> dl.DLataset:
     """Applies common transforms that happen at a trajectory level. Such transforms are usually some sort of
     "relabeling" (e.g. filtering, chunking, adding goals, dropping keys). Transforms that happen in this
@@ -107,6 +108,7 @@ def apply_trajectory_transforms(
             traj_transforms.pad_actions_and_proprio,
             max_action_dim=max_action_dim,
             max_proprio_dim=max_proprio_dim,
+            action_pad_mask=action_pad_mask,
         ),
         num_parallel_calls,
     )
@@ -427,7 +429,7 @@ def make_dataset_from_rlds(
         split = "train" if train else "val"
 
     dataset = dl.DLataset.from_rlds(
-        builder, split=split, shuffle=shuffle, num_parallel_reads=num_parallel_reads
+        builder, split='all', shuffle=shuffle, num_parallel_reads=num_parallel_reads
     )
     for filter_fcn_spec in filter_functions:
         dataset = dataset.filter(ModuleSpec.instantiate(filter_fcn_spec))

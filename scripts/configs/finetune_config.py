@@ -4,8 +4,8 @@ from ml_collections.config_dict import FieldReference, placeholder
 from octo.utils.spec import ModuleSpec
 
 
-def get_config(config_string="head_only,language_conditioned"):
-    mode, task = config_string.split(",")
+def get_config(config_string="head_only,language_conditioned,libero"):
+    mode, task, dataset = config_string.split(",")
     assert task in ["image_conditioned", "language_conditioned", "multimodal"]
     assert mode in ["full", "head_only", "head_mlp_only", "none"]
 
@@ -123,6 +123,11 @@ def get_config(config_string="head_only,language_conditioned"):
         # If the default data loading speed is too slow, try these:
         num_parallel_calls=16,  # for less CPU-intensive ops
     )
+    if dataset == 'metaworld':
+        traj_transform_kwargs["action_pad_mask"] = [True, True, True, False, False, False, True]
+    else:
+        traj_transform_kwargs["action_pad_mask"] = None
+
     workspace_augment_kwargs = dict(
         # scale is the size of the image after cropping
         # ratio is the ratio between width and height of the cropped image, i.e., ratio larger than 1 leads to wider image
