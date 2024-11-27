@@ -34,6 +34,7 @@ from octo.utils.train_utils import (
 )
 
 from octo.model_lora.octo_model import OctoModel as NewOctoModel
+from octo.model_lora_v2.octo_model import OctoModel as OctoModelV2
 
 try:
     from jax_smi import initialise_tracking  # type: ignore
@@ -223,13 +224,22 @@ def main(_):
     rng, init_rng = jax.random.split(rng)
     if "hypernet" in finetune_mode:
         config["model"]["hypernet_kwargs"] = FLAGS.config["hypernet_kwargs"].to_dict()
-        model = NewOctoModel.from_config(
-            config,
-            example_batch,
-            text_processor,
-            rng=init_rng,
-            dataset_statistics=dataset.dataset_statistics,
-        )
+        if "v2" in finetune_mode:
+            model = OctoModelV2.from_config(
+                config,
+                example_batch,
+                text_processor,
+                rng=init_rng,
+                dataset_statistics=dataset.dataset_statistics,
+            )
+        else:
+            model = NewOctoModel.from_config(
+                config,
+                example_batch,
+                text_processor,
+                rng=init_rng,
+                dataset_statistics=dataset.dataset_statistics,
+            )
     else:
         model = OctoModel.from_config(
             config,
