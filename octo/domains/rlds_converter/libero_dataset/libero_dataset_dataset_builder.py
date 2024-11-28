@@ -89,7 +89,7 @@ class LiberoDataset(tfds.core.GeneratorBasedBuilder):
     def _split_generators(self, dl_manager: tfds.download.DownloadManager):
         """Define data splits."""
         return {
-            'train': self._generate_examples(path='/user/octo/data/libero_separate_demos/libero_goal_preprocessed/episode_*.npy'),
+            'train': self._generate_examples(path='dataset/episode_*.npy'),
             # 'val': self._generate_examples(path='data/val/episode_*.npy'),
         }
 
