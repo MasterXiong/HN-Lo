@@ -171,7 +171,7 @@ class OctoInference:
         input_observation = {"image_primary": images, "timestep_pad_mask": pad_mask}
         # hard-coded solution to align the batch size
         tasks = jax.tree_map(lambda x: np.repeat(x, images.shape[0], axis=0), self.task)
-        norm_raw_actions, action_attention_weights = self.model.sample_actions(
+        norm_raw_actions, attention_weights = self.model.sample_actions(
             input_observation,
             tasks,
             rng=key,
@@ -210,4 +210,4 @@ class OctoInference:
         if self.policy_setup == 'libero':
             action["gripper"] = 2 * raw_action["open_gripper"] - 1
 
-        return raw_action, action, action_attention_weights, image
+        return raw_action, action, attention_weights, image, (self.task_description, self.task)

@@ -168,17 +168,8 @@ class OctoModel:
             mutable=['intermediates'],
             # capture_intermediates=True, 
         )
-        attention_weights = states['intermediates']['octo_transformer']['BlockTransformer_0']['Transformer_0']
-        action_attention_weights = {'mean': [], 'max': []}
-        for i in range(12):
-            # attention map shape: batch_size * head_num * token_num * token_num
-            # shape of w: batch_size * head_num * image_token_num (256)
-            w = attention_weights[f'encoderblock_{i}']['MultiHeadDotProductAttention_0']['attention_weights'][0][:, :, -1, -(1 + 16 + 256):-(1 + 16)]
-            w_mean = w.mean(axis=1)
-            w_max = w.max(axis=1)
-            action_attention_weights['mean'].append(w_mean)
-            action_attention_weights['max'].append(w_max)
-        return out, action_attention_weights, lora_params
+        attention_weights = states['intermediates']['octo_transformer']['BlockTransformer_0']
+        return out, attention_weights, lora_params
 
     @partial(
         jax.jit,
@@ -214,7 +205,7 @@ class OctoModel:
         if timestep_pad_mask is None:
             timestep_pad_mask = observations["timestep_pad_mask"]
 
-        transformer_outputs, action_attention_weights, lora_params = self.run_transformer(
+        transformer_outputs, attention_weights, lora_params = self.run_transformer(
             observations, tasks, timestep_pad_mask, train=train
         )
         action_head: ActionHead = self.module.bind({"params": self.params}).heads[
@@ -263,7 +254,7 @@ class OctoModel:
                 )
             else:
                 raise ValueError(f"Unknown normalization type: {normalization_type}")
-        return action, action_attention_weights
+        return action, attention_weights
 
     @classmethod
     def load_pretrained(

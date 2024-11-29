@@ -197,11 +197,32 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
         max_step = task_demo_length[task_name] + 30
         episode_length = [max_step] * env_num
         for step in range(max_step):
-            raw_actions, actions, action_attention_weights, _ = model.step(images)
+            raw_actions, actions, attention_weights, _, (language_instruction, tokens) = model.step(images)
+
+            # task_attention_weights = []
+            # for i in range(3):
+            #     # shape: head_num * token_num * token_num
+            #     w = attention_weights['hypernet']['Transformer_0'][f'encoderblock_{i}']['MultiHeadDotProductAttention_0']['attention_weights'][0][0]
+            #     task_attention_weights.append(w)
+            # os.makedirs(f'{eval_path}/task_attention_weights/{split}', exist_ok=True)
+            # with open(f'{eval_path}/task_attention_weights/{split}/{task_name}.pkl', 'wb') as f:
+            #     pickle.dump([task_attention_weights, language_instruction, tokens], f)
+
+            # analyze action attention mask
+            # action_attention_weights = {'mean': [], 'max': []}
+            # for i in range(12):
+            #     # attention map shape: batch_size * head_num * token_num * token_num
+            #     # shape of w: batch_size * head_num * image_token_num (256)
+            #     w = attention_weights['Transformer_0'][f'encoderblock_{i}']['MultiHeadDotProductAttention_0']['attention_weights'][0][:, :, -1, -(1 + 16 + 256):-(1 + 16)]
+            #     w_mean = w.mean(axis=1)
+            #     w_max = w.max(axis=1)
+            #     action_attention_weights['mean'].append(w_mean)
+            #     action_attention_weights['max'].append(w_max)
             # heatmaps = generate_attention_map(action_attention_weights['mean'][-1])
             # masked_images = combine_image_and_heatmap(images, heatmaps)
             # images_with_attention_weights.append(masked_images)
             # attention_history.append(action_attention_weights)
+
             actions = np.concatenate([actions['world_vector'], actions['rot_axangle'], actions['gripper'].reshape(-1, 1)], axis=1)
             obs, rewards, dones, infos = env.step(actions)
             # check whether succeed
