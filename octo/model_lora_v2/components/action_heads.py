@@ -10,11 +10,11 @@ from jax import Array
 import jax.numpy as jnp
 from jax.typing import ArrayLike
 
-from octo.model.components.base import TokenGroup
-from octo.model.components.diffusion import cosine_beta_schedule, create_diffusion_model
-from octo.model.components.tokenizers import BinTokenizer
-from octo.model.components.transformer import MAPHead
-from octo.model.components.unet import ConditionalUnet1D, unet_squaredcos_cap_v2
+from octo.model_lora_v2.components.base import TokenGroup
+from octo.model_lora_v2.components.diffusion import cosine_beta_schedule, create_diffusion_model
+from octo.model_lora_v2.components.tokenizers import BinTokenizer
+from octo.model_lora_v2.components.transformer import MAPHead
+from octo.model_lora_v2.components.unet import ConditionalUnet1D, unet_squaredcos_cap_v2
 from octo.utils.typing import PRNGKey
 
 
@@ -396,6 +396,7 @@ class DiffusionActionHead(nn.Module):
     """
 
     readout_key: str
+    hypernet_kwargs: dict
     use_map: bool = False
     action_horizon: int = 1
     action_dim: int = 7
@@ -423,6 +424,7 @@ class DiffusionActionHead(nn.Module):
             dropout_rate=self.dropout_rate,
             hidden_dim=self.hidden_dim,
             use_layer_norm=self.use_layer_norm,
+            hypernet_kwargs=self.hypernet_kwargs
         )
 
         # create beta schedule
@@ -433,6 +435,7 @@ class DiffusionActionHead(nn.Module):
     def __call__(
         self,
         transformer_outputs: Dict[str, TokenGroup],
+        lora_params,
         time: Optional[ArrayLike] = None,
         noisy_actions: Optional[ArrayLike] = None,
         train: bool = True,
@@ -460,12 +463,13 @@ class DiffusionActionHead(nn.Module):
                 (*embeddings.shape[:2], self.action_dim * self.action_horizon),
                 dtype=jnp.float32,
             )
-        pred_eps = self.diffusion_model(embeddings, noisy_actions, time, train=train)
+        pred_eps = self.diffusion_model(embeddings, noisy_actions, time, lora_params, train=train)
         return pred_eps
 
     def loss(
         self,
         transformer_outputs: Dict[str, TokenGroup],
+        lora_params,
         actions: ArrayLike,
         timestep_pad_mask: ArrayLike,
         action_pad_mask: ArrayLike,
@@ -508,7 +512,7 @@ class DiffusionActionHead(nn.Module):
         noisy_actions = scale * actions_flat[None] + std * noise
 
         pred_eps = self(
-            transformer_outputs, train=train, time=time, noisy_actions=noisy_actions
+            transformer_outputs, lora_params, train=train, time=time, noisy_actions=noisy_actions
         )
 
         # combine the timestep pad mask with the action pad mask
@@ -528,6 +532,7 @@ class DiffusionActionHead(nn.Module):
     def predict_action(
         self,
         transformer_outputs: Dict[str, TokenGroup],
+        lora_params,
         rng: PRNGKey,
         train: bool = True,
         embodiment_action_dim: Optional[int] = None,
@@ -563,7 +568,7 @@ class DiffusionActionHead(nn.Module):
             input_time = jnp.broadcast_to(time, (*current_x.shape[:-1], 1))
 
             eps_pred = module.apply(
-                variables, transformer_outputs, input_time, current_x, train=train
+                variables, transformer_outputs, lora_params, input_time, current_x, train=train
             )
 
             alpha_1 = 1 / jnp.sqrt(self.alphas[time])

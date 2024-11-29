@@ -215,7 +215,7 @@ def main(_):
 
     #########
     #
-    # Load Pretrained Model
+    # Initialize the fine-tuned model and load pretrained params
     #
     #########
     print ("====== Load Model ======")
@@ -225,6 +225,8 @@ def main(_):
     if "hypernet" in finetune_mode:
         config["model"]["hypernet_kwargs"] = FLAGS.config["hypernet_kwargs"].to_dict()
         if "v2" in finetune_mode:
+            config['model']['heads']['action']['module'] = 'octo.model_lora_v2.components.action_heads'
+            config['model']['heads']['action']['kwargs']['hypernet_kwargs'] = FLAGS.config["hypernet_kwargs"].to_dict()
             model = OctoModelV2.from_config(
                 config,
                 example_batch,
@@ -321,7 +323,7 @@ def main(_):
 
     def loss_fn(params, batch, rng, train=True):
         bound_module = model.module.bind({"params": params}, rngs={"dropout": rng})
-        transformer_embeddings = bound_module.octo_transformer(
+        transformer_embeddings, lora_params = bound_module.octo_transformer(
             batch["observation"],
             batch["task"],
             batch["observation"]["timestep_pad_mask"],
@@ -329,6 +331,7 @@ def main(_):
         )
         action_loss, action_metrics = bound_module.heads["action"].loss(
             transformer_embeddings,  # action head knows to pull out the "action" readout_key
+            lora_params, 
             batch["action"],
             batch["observation"]["timestep_pad_mask"],
             batch["action_pad_mask"],

@@ -193,6 +193,8 @@ def get_config(config_string="head_only,language_conditioned,libero"):
         attend_to_padding=True,
         task_attend_to_layer=False,
         embedding_dropout_rate=0.0,
+        diffusion_lora=False,
+        separate_token_for_lora_module=False,
     )
 
     return ConfigDict(config)

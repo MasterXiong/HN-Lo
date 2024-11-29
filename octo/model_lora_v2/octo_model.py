@@ -158,7 +158,7 @@ class OctoModel:
         )
         _verify_shapes(tasks, "tasks", self.example_batch["task"], starting_dim=1)
 
-        out, states = self.module.apply(
+        (out, lora_params), states = self.module.apply(
             {"params": self.params},
             observations,
             tasks,
@@ -178,7 +178,7 @@ class OctoModel:
             w_max = w.max(axis=1)
             action_attention_weights['mean'].append(w_mean)
             action_attention_weights['max'].append(w_max)
-        return out, action_attention_weights
+        return out, action_attention_weights, lora_params
 
     @partial(
         jax.jit,
@@ -214,7 +214,7 @@ class OctoModel:
         if timestep_pad_mask is None:
             timestep_pad_mask = observations["timestep_pad_mask"]
 
-        transformer_outputs, action_attention_weights = self.run_transformer(
+        transformer_outputs, action_attention_weights, lora_params = self.run_transformer(
             observations, tasks, timestep_pad_mask, train=train
         )
         action_head: ActionHead = self.module.bind({"params": self.params}).heads[
@@ -222,6 +222,7 @@ class OctoModel:
         ]
         action = action_head.predict_action(
             transformer_outputs,
+            # lora_params,
             train=train,
             argmax=argmax,
             sample_shape=sample_shape,

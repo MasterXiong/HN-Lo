@@ -350,7 +350,7 @@ class OctoTransformer(nn.Module):
             axis=-2,
         )
 
-        return outputs
+        return outputs, lora_params
 
     def _create_positional_embedding(self, name: str, tokens: jax.Array):
         if tokens.ndim == 3:  # for prefixes
@@ -399,13 +399,13 @@ class OctoModule(nn.Module):
             transformer_outputs: See OctoTransformer.__call__
             head_outputs: dictionary of outputs from heads {head_name: output}
         """
-        transformer_outputs = self.octo_transformer(
+        transformer_outputs, lora_params = self.octo_transformer(
             observations, tasks, timestep_pad_mask, train=train, verbose=verbose
         )
         head_outputs = {}
         for head_name, head in self.heads.items():
-            head_outputs[head_name] = head(transformer_outputs, train=train)
-        return transformer_outputs, head_outputs
+            head_outputs[head_name] = head(transformer_outputs, lora_params, train=train)
+        return transformer_outputs, lora_params, head_outputs
 
     @classmethod
     def create(

@@ -27,7 +27,7 @@ class ScoreActor(nn.Module):
     cond_encoder: nn.Module
     reverse_network: nn.Module
 
-    def __call__(self, obs_enc, actions, time, train=False):
+    def __call__(self, obs_enc, actions, time, lora_params, train=False):
         """
         Args:
             obs_enc: (bd..., obs_dim) where bd... is broadcastable to batch_dims
@@ -44,7 +44,7 @@ class ScoreActor(nn.Module):
             obs_enc = jnp.broadcast_to(obs_enc, new_shape)
 
         reverse_input = jnp.concatenate([cond_enc, obs_enc, actions], axis=-1)
-        eps_pred = self.reverse_network(reverse_input, train=train)
+        eps_pred = self.reverse_network(reverse_input, lora_params, train=train)
         return eps_pred
 
 
@@ -94,19 +94,37 @@ class MLP(nn.Module):
 class MLPResNetBlock(nn.Module):
     features: int
     act: Callable
+    hypernet_kwargs: dict
     dropout_rate: float = None
     use_layer_norm: bool = False
 
     @nn.compact
-    def __call__(self, x, train: bool = False):
+    def __call__(self, x, lora_params, train: bool = False):
         residual = x
         if self.dropout_rate is not None and self.dropout_rate > 0:
             x = nn.Dropout(rate=self.dropout_rate)(x, deterministic=not train)
         if self.use_layer_norm:
             x = nn.LayerNorm()(x)
-        x = nn.Dense(self.features * 4)(x)
+
+        x_origin = nn.Dense(self.features * 4)(x)
+        if self.hypernet_kwargs.get('diffusion_lora', False):
+            lora_A = lora_params['diffusion_residual_kernel_0_lora_A'].reshape(lora_params['diffusion_residual_kernel_0_lora_A'].shape[0], -1, self.hypernet_kwargs["lora_rank"])
+            lora_B = lora_params['diffusion_residual_kernel_0_lora_B'].reshape(lora_params['diffusion_residual_kernel_0_lora_B'].shape[0], self.hypernet_kwargs["lora_rank"], -1)
+            lora_x = (x @ lora_A @ lora_B) * self.hypernet_kwargs["lora_alpha"] / self.hypernet_kwargs["lora_rank"]
+            x = x_origin + lora_x
+        else:
+            x = x_origin
+
         x = self.act(x)
-        x = nn.Dense(self.features)(x)
+
+        x_origin = nn.Dense(self.features)(x)
+        if self.hypernet_kwargs.get('diffusion_lora', False):
+            lora_A = lora_params['diffusion_residual_kernel_1_lora_A'].reshape(lora_params['diffusion_residual_kernel_1_lora_A'].shape[0], -1, self.hypernet_kwargs["lora_rank"])
+            lora_B = lora_params['diffusion_residual_kernel_1_lora_B'].reshape(lora_params['diffusion_residual_kernel_1_lora_B'].shape[0], self.hypernet_kwargs["lora_rank"], -1)
+            lora_x = (x @ lora_A @ lora_B) * self.hypernet_kwargs["lora_alpha"] / self.hypernet_kwargs["lora_rank"]
+            x = x_origin + lora_x
+        else:
+            x = x_origin
 
         if residual.shape != x.shape:
             residual = nn.Dense(self.features)(residual)
@@ -117,24 +135,50 @@ class MLPResNetBlock(nn.Module):
 class MLPResNet(nn.Module):
     num_blocks: int
     out_dim: int
+    hypernet_kwargs: dict
     dropout_rate: float = None
     use_layer_norm: bool = False
     hidden_dim: int = 256
     activation: Callable = nn.swish
 
     @nn.compact
-    def __call__(self, x: jax.typing.ArrayLike, train: bool = False) -> jax.Array:
-        x = nn.Dense(self.hidden_dim, kernel_init=default_init())(x)
-        for _ in range(self.num_blocks):
+    def __call__(self, x: jax.typing.ArrayLike, lora_params, train: bool = False) -> jax.Array:
+
+        x_origin = nn.Dense(self.hidden_dim, kernel_init=default_init())(x)
+        if self.hypernet_kwargs.get('diffusion_lora', False):
+            lora_A = lora_params['diffusion_input_lora_A'].reshape(lora_params['diffusion_input_lora_A'].shape[0], -1, self.hypernet_kwargs["lora_rank"])
+            lora_B = lora_params['diffusion_input_lora_B'].reshape(lora_params['diffusion_input_lora_B'].shape[0], self.hypernet_kwargs["lora_rank"], -1)
+            lora_x = (x @ lora_A @ lora_B) * self.hypernet_kwargs["lora_alpha"] / self.hypernet_kwargs["lora_rank"]
+            x = x_origin + lora_x
+        else:
+            x = x_origin
+
+        for i in range(self.num_blocks):
+            lora_residual_params = {
+                'diffusion_residual_kernel_0_lora_A': lora_params['diffusion_residual_kernel_0_lora_A'][i], 
+                'diffusion_residual_kernel_0_lora_B': lora_params['diffusion_residual_kernel_0_lora_B'][i], 
+                'diffusion_residual_kernel_1_lora_A': lora_params['diffusion_residual_kernel_1_lora_A'][i], 
+                'diffusion_residual_kernel_1_lora_B': lora_params['diffusion_residual_kernel_1_lora_B'][i], 
+            }
             x = MLPResNetBlock(
                 self.hidden_dim,
                 act=self.activation,
+                hypernet_kwargs=self.hypernet_kwargs,
                 use_layer_norm=self.use_layer_norm,
                 dropout_rate=self.dropout_rate,
-            )(x, train=train)
+            )(x, lora_residual_params, train=train)
 
         x = self.activation(x)
-        x = nn.Dense(self.out_dim, kernel_init=default_init())(x)
+
+        x_origin = nn.Dense(self.out_dim, kernel_init=default_init())(x)
+        if self.hypernet_kwargs.get('diffusion_lora', False):
+            lora_A = lora_params['diffusion_output_lora_A'].reshape(lora_params['diffusion_output_lora_A'].shape[0], -1, self.hypernet_kwargs["lora_rank"])
+            lora_B = lora_params['diffusion_output_lora_B'].reshape(lora_params['diffusion_output_lora_B'].shape[0], self.hypernet_kwargs["lora_rank"], -1)
+            lora_x = (x @ lora_A @ lora_B) * self.hypernet_kwargs["lora_alpha"] / self.hypernet_kwargs["lora_rank"]
+            x = x_origin + lora_x
+        else:
+            x = x_origin
+
         return x
 
 
@@ -142,6 +186,7 @@ def create_diffusion_model(
     out_dim: int,
     time_dim: int,
     num_blocks: int,
+    hypernet_kwargs: dict,
     dropout_rate: float,
     hidden_dim: int,
     use_layer_norm: bool,
@@ -152,6 +197,7 @@ def create_diffusion_model(
         MLPResNet(
             num_blocks,
             out_dim,
+            hypernet_kwargs,
             dropout_rate=dropout_rate,
             hidden_dim=hidden_dim,
             use_layer_norm=use_layer_norm,
