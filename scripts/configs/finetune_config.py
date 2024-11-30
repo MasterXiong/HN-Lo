@@ -195,6 +195,7 @@ def get_config(config_string="head_only,language_conditioned,libero"):
         embedding_dropout_rate=0.0,
         diffusion_lora=False,
         separate_token_for_lora_module=False,
+        layer_token_self_attention=True,
     )
 
     return ConfigDict(config)

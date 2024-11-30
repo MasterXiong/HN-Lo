@@ -56,6 +56,8 @@ class Hypernet(nn.Module):
             layer_attention_mask = jnp.ones((batch_size, 1, context_tokens.shape[-2], layer_token_num), dtype=bool)
         if not self.hypernet_kwargs["task_attend_to_layer"]:
             layer_attention_mask = layer_attention_mask.at[:, :, :instruction_token_len, :].set(False)
+        if not self.hypernet_kwargs.get('layer_token_self_attention', True):
+            layer_attention_mask = layer_attention_mask.at[:, :, instruction_token_len:, :].set(False)
         # concat
         attention_mask = jnp.concatenate((instruction_attention_mask, layer_attention_mask), axis=-1)
 
