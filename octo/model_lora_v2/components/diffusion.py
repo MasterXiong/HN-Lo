@@ -154,12 +154,15 @@ class MLPResNet(nn.Module):
             x = x_origin
 
         for i in range(self.num_blocks):
-            lora_residual_params = {
-                'diffusion_residual_kernel_0_lora_A': lora_params['diffusion_residual_kernel_0_lora_A'][i], 
-                'diffusion_residual_kernel_0_lora_B': lora_params['diffusion_residual_kernel_0_lora_B'][i], 
-                'diffusion_residual_kernel_1_lora_A': lora_params['diffusion_residual_kernel_1_lora_A'][i], 
-                'diffusion_residual_kernel_1_lora_B': lora_params['diffusion_residual_kernel_1_lora_B'][i], 
-            }
+            if self.hypernet_kwargs.get('diffusion_lora', False):
+                lora_residual_params = {
+                    'diffusion_residual_kernel_0_lora_A': lora_params['diffusion_residual_kernel_0_lora_A'][i], 
+                    'diffusion_residual_kernel_0_lora_B': lora_params['diffusion_residual_kernel_0_lora_B'][i], 
+                    'diffusion_residual_kernel_1_lora_A': lora_params['diffusion_residual_kernel_1_lora_A'][i], 
+                    'diffusion_residual_kernel_1_lora_B': lora_params['diffusion_residual_kernel_1_lora_B'][i], 
+                }
+            else:
+                lora_residual_params = None
             x = MLPResNetBlock(
                 self.hidden_dim,
                 act=self.activation,

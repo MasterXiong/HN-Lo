@@ -213,7 +213,7 @@ class OctoModel:
         ]
         action = action_head.predict_action(
             transformer_outputs,
-            # lora_params,
+            lora_params,
             train=train,
             argmax=argmax,
             sample_shape=sample_shape,
