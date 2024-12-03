@@ -27,21 +27,26 @@ class Hypernet(nn.Module):
         # add PE to task tokens
         task_tokens += self._create_positional_embedding('instruction', task_tokens)
         # TF layer tokens
-        if self.hypernet_kwargs.get('separate_token_for_lora_module', False):
-            layer_token_num = self.base_model_kwargs["num_layers"] * 4
+        if self.hypernet_kwargs.get('separate_token_for_base_layers', True):
+            # a separate token for each Transformer layer in the base network
+            base_token_num = layer_token_num = self.base_model_kwargs["num_layers"]
+            TF_layer_tokens = jnp.zeros((task_tokens.shape[0], layer_token_num, self.hypernet_kwargs["context_embedding_dim"]))
+            TF_layer_tokens += self._create_positional_embedding('TF_layer', TF_layer_tokens)
+            # a separate token for each diffusion layer in the base network
+            if self.hypernet_kwargs.get('diffusion_lora', False):
+                # diffusion reverse network layer tokens
+                diffusion_layer_tokens = jnp.zeros((task_tokens.shape[0], 5, self.hypernet_kwargs["context_embedding_dim"]))
+                diffusion_layer_tokens += self._create_positional_embedding('diffusion_layer', diffusion_layer_tokens)
+                # context input to context encoder
+                context_tokens = jnp.concatenate([task_tokens, TF_layer_tokens, diffusion_layer_tokens], axis=1)
+                base_token_num += 5
+            else:
+                context_tokens = jnp.concatenate([task_tokens, TF_layer_tokens], axis=1)
         else:
-            layer_token_num = self.base_model_kwargs["num_layers"]
-        TF_layer_tokens = jnp.zeros((task_tokens.shape[0], layer_token_num, self.hypernet_kwargs["context_embedding_dim"]))
-        TF_layer_tokens += self._create_positional_embedding('TF_layer', TF_layer_tokens)
-
-        if self.hypernet_kwargs.get('diffusion_lora', False):
-            # diffusion reverse network layer tokens
-            diffusion_layer_tokens = jnp.zeros((task_tokens.shape[0], 5, self.hypernet_kwargs["context_embedding_dim"]))
-            diffusion_layer_tokens += self._create_positional_embedding('diffusion_layer', diffusion_layer_tokens)
-            # context input to context encoder
-            context_tokens = jnp.concatenate([task_tokens, TF_layer_tokens, diffusion_layer_tokens], axis=1)
-        else:
-            context_tokens = jnp.concatenate([task_tokens, TF_layer_tokens], axis=1)
+            base_network_token = jnp.zeros((task_tokens.shape[0], 1, self.hypernet_kwargs["context_embedding_dim"]))
+            base_network_token += self._create_positional_embedding('whole_base_network', base_network_token)
+            context_tokens = jnp.concatenate([task_tokens, base_network_token], axis=1)
+            base_token_num = 1
 
         # define attention mask: each row of the mask determines how a token attends to the other tokens
         # 1. determine if padding tokens in the instruction will be attended to (yes by default)
@@ -50,10 +55,7 @@ class Hypernet(nn.Module):
         else:
             instruction_attention_mask = jnp.broadcast_to(jnp.expand_dims(token_mask, (1, 2)), (batch_size, 1, context_tokens.shape[-2], instruction_token_len)).astype(bool)
         # 2. determine if task tokens attend to layer tokens (no by default)
-        if self.hypernet_kwargs.get('diffusion_lora', False):
-            layer_attention_mask = jnp.ones((batch_size, 1, context_tokens.shape[-2], layer_token_num + 5), dtype=bool)
-        else:
-            layer_attention_mask = jnp.ones((batch_size, 1, context_tokens.shape[-2], layer_token_num), dtype=bool)
+        layer_attention_mask = jnp.ones((batch_size, 1, context_tokens.shape[-2], base_token_num), dtype=bool)
         if not self.hypernet_kwargs["task_attend_to_layer"]:
             layer_attention_mask = layer_attention_mask.at[:, :, :instruction_token_len, :].set(False)
         if not self.hypernet_kwargs.get('layer_token_self_attention', True):
@@ -66,13 +68,29 @@ class Hypernet(nn.Module):
             context_tokens, attention_mask, train=train
         )
 
-        # get the context embedding for each TF layer
-        TF_context_embedding = output[:, 16:(16 + layer_token_num)]
-        # transpose to shape: layer_num * batch_size * context_embedding_dim
-        TF_context_embedding = jnp.transpose(TF_context_embedding, (1, 0, 2))
-        # apply dropout to the final context embedding
-        embedding_dropout_rate = self.hypernet_kwargs.get("embedding_dropout_rate", 0.)
-        TF_context_embedding = nn.Dropout(rate=embedding_dropout_rate)(TF_context_embedding, deterministic=not train)
+        if self.hypernet_kwargs.get('separate_token_for_base_layers', True):
+            # get the context embedding for each TF layer
+            TF_context_embedding = output[:, 16:(16 + layer_token_num)]
+            # transpose to shape: layer_num * batch_size * context_embedding_dim
+            TF_context_embedding = jnp.transpose(TF_context_embedding, (1, 0, 2))
+            # apply dropout to the final context embedding
+            embedding_dropout_rate = self.hypernet_kwargs.get("embedding_dropout_rate", 0.)
+            TF_context_embedding = nn.Dropout(rate=embedding_dropout_rate)(TF_context_embedding, deterministic=not train)
+        else:
+            base_network_context_embedding = jnp.repeat(jnp.expand_dims(output[:, -1], axis=0), self.base_model_kwargs["num_layers"], axis=0)
+            TF_positional_embedding = self.param(
+                "TF_pos_embedding",
+                nn.initializers.normal(stddev=0.02),
+                (self.base_model_kwargs["num_layers"], 1, self.hypernet_kwargs["context_embedding_dim"]), # layer_num * batch_size * context_embedding_dim
+            )
+            TF_context_embedding = base_network_context_embedding + TF_positional_embedding
+            TF_context_embedding = nn.Dense(
+                self.hypernet_kwargs["context_embedding_dim"],
+                kernel_init=nn.initializers.normal(stddev=1e-6),
+                bias_init=nn.initializers.normal(stddev=1e-6),
+                name='TF_context_encoder',
+            )(TF_context_embedding)
+            TF_context_embedding = nn.relu(TF_context_embedding)
 
         # HN output heads
         lora_params = dict()
@@ -115,10 +133,26 @@ class Hypernet(nn.Module):
         )(MLP_1_lora_B_embedding)
 
         if self.hypernet_kwargs.get('diffusion_lora', False):
-            # get the context embedding for each diffusion layer
-            diffusion_context_embedding = output[:, -5:]
-            # transpose to shape: layer_num * batch_size * context_embedding_dim
-            diffusion_context_embedding = jnp.transpose(diffusion_context_embedding, (1, 0, 2))
+            if self.hypernet_kwargs.get('separate_token_for_base_layers', True):
+                # get the context embedding for each diffusion layer
+                diffusion_context_embedding = output[:, -5:]
+                # transpose to shape: layer_num * batch_size * context_embedding_dim
+                diffusion_context_embedding = jnp.transpose(diffusion_context_embedding, (1, 0, 2))
+            else:
+                base_network_context_embedding = jnp.repeat(jnp.expand_dims(output[:, -1], axis=0), 5, axis=0)
+                diffusion_positional_embedding = self.param(
+                    "diffusion_pos_embedding",
+                    nn.initializers.normal(stddev=0.02),
+                    (5, 1, self.hypernet_kwargs["context_embedding_dim"]), # layer_num * batch_size * context_embedding_dim
+                )
+                diffusion_context_embedding = base_network_context_embedding + diffusion_positional_embedding
+                diffusion_context_embedding = nn.Dense(
+                    self.hypernet_kwargs["context_embedding_dim"],
+                    kernel_init=nn.initializers.normal(stddev=1e-6),
+                    bias_init=nn.initializers.normal(stddev=1e-6),
+                    name='diffusion_context_encoder',
+                )(diffusion_context_embedding)
+                diffusion_context_embedding = nn.relu(diffusion_context_embedding)
             # input layer for diffusion
             lora_params['diffusion_input_lora_A'] = nn.Dense(
                 self.hypernet_kwargs["lora_rank"] * 828,

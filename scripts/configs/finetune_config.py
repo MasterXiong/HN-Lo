@@ -197,6 +197,7 @@ def get_config(config_string="head_only,language_conditioned,libero"):
         diffusion_lora=False,
         separate_token_for_lora_module=False,
         layer_token_self_attention=True,
+        separate_token_for_base_layers=True,
     )
 
     return ConfigDict(config)
