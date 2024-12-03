@@ -171,7 +171,16 @@ def main(_):
     else:
         text_processor = ModuleSpec.instantiate(config["text_processor"])()
 
+    def clean_text(instruction):
+        instruction = instruction.replace(b'caddy', b'box')
+        instruction = instruction.replace(b'mug', b'cup')
+        instruction = instruction.replace(b'frying pan', b'pan')
+        instruction = instruction.replace(b'moka pot', b'pot')
+        return instruction
+
     def process_batch(batch):
+        if FLAGS.config.get('clean_instruction', False):
+            batch['task']['language_instruction'] = [clean_text(instruction) for instruction in batch['task']['language_instruction']]
         batch = process_text(batch, text_processor)
         del batch["dataset_name"]
         return batch

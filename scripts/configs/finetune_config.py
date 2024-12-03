@@ -98,6 +98,7 @@ def get_config(config_string="head_only,language_conditioned,libero"):
             trajs_for_viz=8,
             samples_per_state=8,
         ),
+        clean_instruction=False,
     )
 
     if task == "image_conditioned":
