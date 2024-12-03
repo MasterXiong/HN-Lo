@@ -99,6 +99,7 @@ def get_config(config_string="head_only,language_conditioned,libero"):
             samples_per_state=8,
         ),
         clean_instruction=False,
+        remove_useless_token=False,
     )
 
     if task == "image_conditioned":

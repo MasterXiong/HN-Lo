@@ -172,16 +172,19 @@ def main(_):
         text_processor = ModuleSpec.instantiate(config["text_processor"])()
 
     def clean_text(instruction):
-        instruction = instruction.replace(b'caddy', b'box')
-        instruction = instruction.replace(b'mug', b'cup')
-        instruction = instruction.replace(b'frying pan', b'pan')
-        instruction = instruction.replace(b'moka pot', b'pot')
+        if FLAGS.config.get('clean_instruction', False):
+            instruction = instruction.replace(b'caddy', b'box').replace(b'mug', b'cup').replace(b'frying pan', b'pan').replace(b'moka pot', b'pot')
+        if FLAGS.config.get('remove_useless_token', False):
+            instruction = instruction.replace(b' the ', b' ')
         return instruction
 
     def process_batch(batch):
-        if FLAGS.config.get('clean_instruction', False):
-            batch['task']['language_instruction'] = [clean_text(instruction) for instruction in batch['task']['language_instruction']]
+        batch['task']['language_instruction'] = [clean_text(instruction) for instruction in batch['task']['language_instruction']]
         batch = process_text(batch, text_processor)
+        if FLAGS.config.get('remove_useless_token', False):
+            instruction_length = batch['task']['language_instruction']['attention_mask'].sum(1)
+            batch['task']['language_instruction']['input_ids'][list(range(FLAGS.config.batch_size)), instruction_length - 1] = 0
+            batch['task']['language_instruction']['attention_mask'][list(range(FLAGS.config.batch_size)), instruction_length - 1] = 0
         del batch["dataset_name"]
         return batch
 
