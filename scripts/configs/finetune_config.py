@@ -55,6 +55,7 @@ def get_config(config_string="head_only,language_conditioned,libero"):
 
     max_steps = FieldReference(50000)
     window_size = FieldReference(default=1)
+    initial_image_in_task_context = FieldReference(False)
 
     config = dict(
         pretrained_path=placeholder(str),
@@ -122,6 +123,7 @@ def get_config(config_string="head_only,language_conditioned,libero"):
         task_augment_kwargs=dict(
             keep_image_prob=keep_image_prob,
         ),
+        initial_image_in_task=initial_image_in_task_context,
         # If the default data loading speed is too slow, try these:
         num_parallel_calls=16,  # for less CPU-intensive ops
     )
@@ -199,6 +201,7 @@ def get_config(config_string="head_only,language_conditioned,libero"):
         separate_token_for_lora_module=False,
         layer_token_self_attention=True,
         separate_token_for_base_layers=True,
+        initial_image_input=initial_image_in_task_context,
     )
 
     return ConfigDict(config)

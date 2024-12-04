@@ -69,6 +69,63 @@ def regex_filter(regex_keys, xs):
     return list(filter(lambda x: regex_match(regex_keys, x), xs))
 
 
+class TaskImageTokenizer(nn.Module):
+
+    encoder: ModuleSpec
+    image_stack_keys: Sequence[str] = ("initial_image", )
+
+    @nn.compact
+    def __call__(
+        self,
+        tasks,
+    ):
+        def extract_inputs(keys, inputs, check_spatial=False):
+            extracted_outputs = []
+            for key in keys:
+                # if check_spatial:
+                #     assert len(inputs[key].shape) >= 4
+                extracted_outputs.append(inputs[key])
+            return jnp.concatenate(extracted_outputs, axis=-1)
+
+        stack_keys = regex_filter(self.image_stack_keys, sorted(tasks.keys()))
+        if len(stack_keys) == 0:
+            logging.info(
+                f"No image inputs matching {self.image_stack_keys} were found."
+                "Skipping tokenizer entirely."
+            )
+            assert self.proper_pad_mask, "Cannot skip unless using proper_pad_mask."
+            return None
+
+        # stack all spatial observation and task inputs
+        enc_inputs = extract_inputs(stack_keys, tasks, check_spatial=True)
+        b, h, w, c = enc_inputs.shape
+
+        # extract non-spatial FiLM inputs
+        encoder_input_kwargs = {}
+
+        # run visual encoder
+        encoder_def = ModuleSpec.instantiate(self.encoder)()
+        image_tokens = encoder_def(enc_inputs, **encoder_input_kwargs)
+        image_tokens = jnp.reshape(image_tokens, (b, -1, image_tokens.shape[-1]))
+
+        return image_tokens
+
+        # if self.use_token_learner:
+        #     image_tokens = TokenLearner(num_tokens=self.num_tokens)(
+        #         image_tokens, train=train
+        #     )
+
+        # if self.proper_pad_mask:
+        #     pad_mask = generate_proper_pad_mask(
+        #         image_tokens,
+        #         observations.get("pad_mask_dict", None),
+        #         obs_stack_keys,
+        #     )
+        # else:
+        #     pad_mask = jnp.ones(image_tokens.shape[:-1])
+        # return TokenGroup(image_tokens, pad_mask)
+
+
 class ImageTokenizer(nn.Module):
     """Image tokenizer that encodes image stack into tokens with optional FiLM conditioning.
 

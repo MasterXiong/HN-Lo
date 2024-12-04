@@ -41,6 +41,7 @@ def apply_trajectory_transforms(
     post_chunk_transforms: Sequence[ModuleSpec] = (),
     num_parallel_calls: int = tf.data.AUTOTUNE,
     action_pad_mask = None, 
+    initial_image_in_task = False,
 ) -> dl.DLataset:
     """Applies common transforms that happen at a trajectory level. Such transforms are usually some sort of
     "relabeling" (e.g. filtering, chunking, adding goals, dropping keys). Transforms that happen in this
@@ -133,6 +134,16 @@ def apply_trajectory_transforms(
             ),
             num_parallel_calls,
         )
+
+    def add_initial_image_to_task(traj):
+        initial_image = tf.gather(traj['observation']['image_primary'], 0)
+        initial_image = tf.io.decode_image(initial_image, expand_animations=False, dtype=tf.uint8)
+        initial_image = dl.transforms.resize_image(initial_image, size=(256, 256))
+        traj['task']['initial_image'] = tf.repeat(tf.expand_dims(initial_image, axis=0), tf.shape(traj['action'])[0], axis=0)
+        return traj
+
+    if initial_image_in_task:
+        dataset = dataset.traj_map(add_initial_image_to_task, num_parallel_calls)
 
     # chunks observations and actions
     dataset = dataset.traj_map(

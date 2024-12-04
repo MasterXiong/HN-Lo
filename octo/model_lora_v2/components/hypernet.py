@@ -6,6 +6,9 @@ import jax
 import jax.numpy as jnp
 
 from octo.model.components.transformer import Transformer
+from .tokenizers import TaskImageTokenizer
+from .vit_encoders import SmallStem16
+from octo.utils.spec import ModuleSpec
 
 
 class Hypernet(nn.Module):
@@ -14,39 +17,54 @@ class Hypernet(nn.Module):
     token_embedding_size: int = 768
 
     @nn.compact
-    def __call__(self, task_tokens, token_mask, train: bool):
+    def __call__(self, instruction_tokens, tasks, train: bool):
         '''
-        task_tokens: shape = (batch_size * token_num * token_embedding_size)
+        instruction_tokens: shape = (batch_size * token_num * token_embedding_size)
         '''
-        batch_size, instruction_token_len = task_tokens.shape[0], task_tokens.shape[1]
+        token_mask = tasks['language_instruction']['attention_mask']
+        batch_size, instruction_token_len = instruction_tokens.shape[0], instruction_tokens.shape[1]
         # projection layer for the task tokens
-        task_tokens = nn.Dense(
+        instruction_tokens = nn.Dense(
             self.hypernet_kwargs["context_embedding_dim"], 
             name="task_token_projection"
-        )(task_tokens)
+        )(instruction_tokens)
         # add PE to task tokens
-        task_tokens += self._create_positional_embedding('instruction', task_tokens)
+        instruction_tokens += self._create_positional_embedding('instruction', instruction_tokens)
+        context_tokens = [instruction_tokens]
+
+        if self.hypernet_kwargs.get('initial_image_input', False):
+            image_tokens = TaskImageTokenizer(
+                encoder=ModuleSpec.create(SmallStem16),
+            )(tasks)
+            image_tokens = nn.Dense(
+                self.hypernet_kwargs["context_embedding_dim"], 
+                name=f"initial_image_projection"
+            )(image_tokens)
+            image_tokens += self._create_positional_embedding('initial_image', image_tokens)
+            context_tokens.append(image_tokens)
+
         # TF layer tokens
         if self.hypernet_kwargs.get('separate_token_for_base_layers', True):
             # a separate token for each Transformer layer in the base network
             base_token_num = layer_token_num = self.base_model_kwargs["num_layers"]
-            TF_layer_tokens = jnp.zeros((task_tokens.shape[0], layer_token_num, self.hypernet_kwargs["context_embedding_dim"]))
+            TF_layer_tokens = jnp.zeros((instruction_tokens.shape[0], layer_token_num, self.hypernet_kwargs["context_embedding_dim"]))
             TF_layer_tokens += self._create_positional_embedding('TF_layer', TF_layer_tokens)
+            context_tokens.append(TF_layer_tokens)
             # a separate token for each diffusion layer in the base network
             if self.hypernet_kwargs.get('diffusion_lora', False):
                 # diffusion reverse network layer tokens
-                diffusion_layer_tokens = jnp.zeros((task_tokens.shape[0], 5, self.hypernet_kwargs["context_embedding_dim"]))
+                diffusion_layer_tokens = jnp.zeros((instruction_tokens.shape[0], 5, self.hypernet_kwargs["context_embedding_dim"]))
                 diffusion_layer_tokens += self._create_positional_embedding('diffusion_layer', diffusion_layer_tokens)
                 # context input to context encoder
-                context_tokens = jnp.concatenate([task_tokens, TF_layer_tokens, diffusion_layer_tokens], axis=1)
+                context_tokens.append(diffusion_layer_tokens)
                 base_token_num += 5
-            else:
-                context_tokens = jnp.concatenate([task_tokens, TF_layer_tokens], axis=1)
         else:
-            base_network_token = jnp.zeros((task_tokens.shape[0], 1, self.hypernet_kwargs["context_embedding_dim"]))
+            base_network_token = jnp.zeros((instruction_tokens.shape[0], 1, self.hypernet_kwargs["context_embedding_dim"]))
             base_network_token += self._create_positional_embedding('whole_base_network', base_network_token)
-            context_tokens = jnp.concatenate([task_tokens, base_network_token], axis=1)
+            context_tokens.append(base_network_token)
             base_token_num = 1
+
+        context_tokens = jnp.concatenate(context_tokens, axis=1)
 
         # define attention mask: each row of the mask determines how a token attends to the other tokens
         # 1. determine if padding tokens in the instruction will be attended to (yes by default)
@@ -54,14 +72,20 @@ class Hypernet(nn.Module):
             instruction_attention_mask = jnp.ones((batch_size, 1, context_tokens.shape[-2], instruction_token_len), dtype=bool)
         else:
             instruction_attention_mask = jnp.broadcast_to(jnp.expand_dims(token_mask, (1, 2)), (batch_size, 1, context_tokens.shape[-2], instruction_token_len)).astype(bool)
+        attention_mask = [instruction_attention_mask]
+        # attention mask for initial image tokens
+        if self.hypernet_kwargs.get('initial_image_input', False):
+            initial_image_attention_mask = jnp.ones((batch_size, 1, context_tokens.shape[-2], 256), dtype=bool)
+            attention_mask.append(initial_image_attention_mask)
         # 2. determine if task tokens attend to layer tokens (no by default)
         layer_attention_mask = jnp.ones((batch_size, 1, context_tokens.shape[-2], base_token_num), dtype=bool)
         if not self.hypernet_kwargs["task_attend_to_layer"]:
-            layer_attention_mask = layer_attention_mask.at[:, :, :instruction_token_len, :].set(False)
+            layer_attention_mask = layer_attention_mask.at[:, :, :(-base_token_num), :].set(False)
         if not self.hypernet_kwargs.get('layer_token_self_attention', True):
-            layer_attention_mask = layer_attention_mask.at[:, :, instruction_token_len:, :].set(False)
+            layer_attention_mask = layer_attention_mask.at[:, :, (-base_token_num):, :].set(False)
+        attention_mask.append(layer_attention_mask)
         # concat
-        attention_mask = jnp.concatenate((instruction_attention_mask, layer_attention_mask), axis=-1)
+        attention_mask = jnp.concatenate(attention_mask, axis=-1)
 
         # context encoder by transformer
         output = Transformer(**self.hypernet_kwargs["context_encoder_kwargs"])(
@@ -70,7 +94,7 @@ class Hypernet(nn.Module):
 
         if self.hypernet_kwargs.get('separate_token_for_base_layers', True):
             # get the context embedding for each TF layer
-            TF_context_embedding = output[:, 16:(16 + layer_token_num)]
+            TF_context_embedding = output[:, (-base_token_num):((-base_token_num) + layer_token_num)]
             # transpose to shape: layer_num * batch_size * context_embedding_dim
             TF_context_embedding = jnp.transpose(TF_context_embedding, (1, 0, 2))
             # apply dropout to the final context embedding
