@@ -92,6 +92,9 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
     with open('octo/domains/LIBERO/task_demo_length.pkl', 'rb') as f:
         task_demo_length = pickle.load(f)
 
+    with open(f'{model_path}/finetune_config.json', 'r') as f:
+        finetune_config = json.load(f)
+
     for task_id in tasks:
 
         # retrieve a specific task
@@ -99,6 +102,11 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
         task_name = task.name
         task_description = task.language
         task_bddl_file = os.path.join(get_libero_path("bddl_files"), task.problem_folder, task.bddl_file)
+
+        if finetune_config.get('clean_instruction', False):
+            task_description = task_description.replace('caddy', 'box').replace('mug', 'cup').replace('frying pan', 'pan').replace('moka pot', 'pot')
+        if finetune_config.get('remove_useless_token', False):
+            task_description = task_description.replace(' the ', ' ')
 
         if task_name in all_tasks_success_rate and not recompute:
             continue
@@ -158,7 +166,7 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
 
         # approach 2: multi-processing
         # reset the model with the task instruction
-        model.reset(task_description)
+        model.reset(task_description, remove_useless_token=finetune_config.get('remove_useless_token', False))
 
         # initialize the envs
         env_args = {
@@ -193,6 +201,10 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
         attention_history = []
 
         print (f'===== {task_name} =====')
+        if finetune_config['clean_instruction']:
+            print ('cleaned task instruction')
+            print (task_description)
+
         finished_tasks = [False] * env_num
         max_step = task_demo_length[task_name] + 30
         episode_length = [max_step] * env_num
@@ -257,6 +269,10 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
             print (x)
         with open(f'{eval_path}/{save_file_name}.json', 'w') as f:
             json.dump(all_tasks_success_rate, f)
+
+    full_results = sorted(all_tasks_success_rate.items(), key=lambda x: x[0])
+    for x in full_results:
+        print (x)
 
 
 

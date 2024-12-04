@@ -124,8 +124,13 @@ class OctoInference:
         # pad_mask[:self.horizon - self.num_image_history] = 0
         return images, pad_mask
 
-    def reset(self, task_description: str) -> None:
+    def reset(self, task_description: str, remove_useless_token=False) -> None:
         self.task = self.model.create_tasks(texts=[task_description])
+        if remove_useless_token:
+            instruction_length = self.task['language_instruction']['attention_mask'].sum(1)
+            self.task['language_instruction']['input_ids'][:, instruction_length - 1] = 0
+            self.task['language_instruction']['attention_mask'][:, instruction_length - 1] = 0
+
         self.task_description = task_description
         self.image_history.clear()
         if self.action_ensemble:
