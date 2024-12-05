@@ -124,12 +124,13 @@ class OctoInference:
         # pad_mask[:self.horizon - self.num_image_history] = 0
         return images, pad_mask
 
-    def reset(self, task_description: str, remove_useless_token=False) -> None:
+    def reset(self, task_description: str, remove_useless_token=False, env_num=20) -> None:
         self.task = self.model.create_tasks(texts=[task_description])
         if remove_useless_token:
             instruction_length = self.task['language_instruction']['attention_mask'].sum(1)
             self.task['language_instruction']['input_ids'][:, instruction_length - 1] = 0
             self.task['language_instruction']['attention_mask'][:, instruction_length - 1] = 0
+        self.task = jax.tree_map(lambda x: np.repeat(x, env_num, axis=0), self.task)
 
         self.task_description = task_description
         self.image_history.clear()
@@ -175,10 +176,9 @@ class OctoInference:
 
         input_observation = {"image_primary": images, "timestep_pad_mask": pad_mask}
         # hard-coded solution to align the batch size
-        tasks = jax.tree_map(lambda x: np.repeat(x, images.shape[0], axis=0), self.task)
         norm_raw_actions, attention_weights = self.model.sample_actions(
             input_observation,
-            tasks,
+            self.task,
             rng=key,
         )
         raw_actions = norm_raw_actions * self.action_std[None] + self.action_mean[None]

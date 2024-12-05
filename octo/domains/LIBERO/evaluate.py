@@ -166,7 +166,7 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
 
         # approach 2: multi-processing
         # reset the model with the task instruction
-        model.reset(task_description, remove_useless_token=finetune_config.get('remove_useless_token', False))
+        model.reset(task_description, remove_useless_token=finetune_config.get('remove_useless_token', False), env_num=env_num)
 
         # initialize the envs
         env_args = {
@@ -200,6 +200,9 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
         images_with_attention_weights = []
         attention_history = []
 
+        if finetune_config['hypernet_kwargs'].get('initial_image_input', False):
+            model.task['initial_image'] = images.squeeze()
+
         print (f'===== {task_name} =====')
         if finetune_config['clean_instruction']:
             print ('cleaned task instruction')
@@ -211,14 +214,15 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
         for step in range(max_step):
             raw_actions, actions, attention_weights, _, (language_instruction, tokens) = model.step(images)
 
-            # task_attention_weights = []
-            # for i in range(3):
-            #     # shape: head_num * token_num * token_num
-            #     w = attention_weights['hypernet']['Transformer_0'][f'encoderblock_{i}']['MultiHeadDotProductAttention_0']['attention_weights'][0][0]
-            #     task_attention_weights.append(w)
-            # os.makedirs(f'{eval_path}/task_attention_weights/{split}', exist_ok=True)
-            # with open(f'{eval_path}/task_attention_weights/{split}/{task_name}.pkl', 'wb') as f:
-            #     pickle.dump([task_attention_weights, language_instruction, tokens], f)
+            if step == 0 and 'hypernet' in attention_weights:
+                task_attention_weights = []
+                for i in range(3):
+                    # shape: head_num * token_num * token_num
+                    w = attention_weights['hypernet']['Transformer_0'][f'encoderblock_{i}']['MultiHeadDotProductAttention_0']['attention_weights'][0][0]
+                    task_attention_weights.append(w)
+                os.makedirs(f'{eval_path}/task_attention_weights/{split}', exist_ok=True)
+                with open(f'{eval_path}/task_attention_weights/{split}/{task_name}.pkl', 'wb') as f:
+                    pickle.dump([task_attention_weights, language_instruction, tokens], f)
 
             # analyze action attention mask
             # action_attention_weights = {'mean': [], 'max': []}
@@ -273,6 +277,7 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
     full_results = sorted(all_tasks_success_rate.items(), key=lambda x: x[0])
     for x in full_results:
         print (x)
+    print (np.mean([x[1] for x in full_results]))
 
 
 
