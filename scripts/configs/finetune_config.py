@@ -202,6 +202,7 @@ def get_config(config_string="head_only,language_conditioned,libero"):
         layer_token_self_attention=True,
         separate_token_for_base_layers=True,
         initial_image_input=initial_image_in_task_context,
+        transfer_vit_params=False,
     )
 
     return ConfigDict(config)

@@ -264,6 +264,23 @@ def main(_):
         )
     merged_params = merge_params(model.params, pretrained_model.params)
     model = model.replace(params=merged_params)
+
+    if FLAGS.config["hypernet_kwargs"].get('initial_image_input', False) and FLAGS.config["hypernet_kwargs"].get('transfer_vit_params', False):
+        
+        def copy_vit_weights(x, y):
+            if x.shape == y.shape:
+                return y
+            else:
+                return y[:, :, :x.shape[2], :] # for the input layer, the channel number is not aligned
+        
+        pretrained_vit_params = pretrained_model.params['octo_transformer']['observation_tokenizers_primary']
+        model.params['octo_transformer']['hypernet']['TaskImageTokenizer_0'] = jax.tree_map(copy_vit_weights, model.params['octo_transformer']['hypernet']['TaskImageTokenizer_0'], pretrained_vit_params)
+        # shape_check = jax.tree_util.tree_all(jax.tree_map(lambda x, y: x.shape == y.shape, model.params['octo_transformer']['hypernet']['TaskImageTokenizer_0'], pretrained_vit_params))
+        # assert shape_check, "The HN ViT and base model ViT do not have the same shape"
+        # model.params['octo_transformer']['hypernet']['TaskImageTokenizer_0'] = copy.deepcopy(pretrained_vit_params)
+        # check = jax.tree_util.tree_all(jax.tree_map(lambda x, y: ((x != y).sum() == 0), model.params['octo_transformer']['hypernet']['TaskImageTokenizer_0'], pretrained_vit_params))
+        # assert check, "The HN ViT is not initialized correctly!"
+
     del pretrained_model
 
     #########
