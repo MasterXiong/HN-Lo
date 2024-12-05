@@ -1,6 +1,7 @@
 __pycache__/
 
 figures/
+wandb/
 
 *.txt
 test.*

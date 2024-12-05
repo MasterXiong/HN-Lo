@@ -1,6 +1,7 @@
 import datetime
 from functools import partial
 import os
+import numpy as np
 
 from absl import app, flags, logging
 import flax
@@ -111,11 +112,14 @@ def main(_):
     # Setup WandB
     #
     #########
+    from wandb_config import WANDB_API_KEY
+    wandb.login(key=WANDB_API_KEY)
 
-    name = format_name_with_config(
-        FLAGS.name,
-        FLAGS.config.to_dict(),
-    )
+    # name = format_name_with_config(
+    #     FLAGS.name,
+    #     FLAGS.config.to_dict(),
+    # )
+    name = FLAGS.name
     wandb_id = "{name}_{time}".format(
         name=name,
         time=datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
@@ -388,6 +392,7 @@ def main(_):
                 "update_norm": update_norm,
                 "param_norm": param_norm_callable(state.model.params),
                 "learning_rate": lr_callable(state.step),
+                "training_loss": loss,
             }
         )
         new_state = state.apply_gradients(grads=grads, rng=rng)
@@ -453,6 +458,7 @@ def main(_):
         wandb.log(flatten_dict(info, sep="/"), step=step)
 
     timer = Timer()
+    loss_history = []
     for i in tqdm.tqdm(
         range(0, int(FLAGS.config.num_steps)),
         total=int(FLAGS.config.num_steps),
@@ -465,8 +471,13 @@ def main(_):
 
         with timer("train"):
             train_state, update_info = train_step(train_state, batch)
+            loss_history.append(update_info['training_loss'].item())
 
         timer.tock("total")
+
+        if (i + 1) % 1000 == 0:
+            print (f'step {i + 1}, average training loss: {np.mean(loss_history)}')
+            loss_history = []
 
         if (i + 1) % FLAGS.config.log_interval == 0:
             update_info = jax.device_get(update_info)
