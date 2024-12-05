@@ -56,6 +56,7 @@ def get_config(config_string="head_only,language_conditioned,libero"):
     max_steps = FieldReference(50000)
     window_size = FieldReference(default=1)
     initial_image_in_task_context = FieldReference(False)
+    augment_initial_image = FieldReference(False)
 
     config = dict(
         pretrained_path=placeholder(str),
@@ -169,6 +170,7 @@ def get_config(config_string="head_only,language_conditioned,libero"):
             primary=workspace_augment_kwargs,
             wrist=wrist_augment_kwargs,
         ),
+        augment_initial_image=augment_initial_image,
         num_parallel_calls=16,  # for less CPU-intensive ops
     )
     # If the default data loading speed is too slow, try these:
@@ -203,6 +205,7 @@ def get_config(config_string="head_only,language_conditioned,libero"):
         separate_token_for_base_layers=True,
         initial_image_input=initial_image_in_task_context,
         transfer_vit_params=False,
+        augment_initial_image=augment_initial_image,
     )
 
     return ConfigDict(config)

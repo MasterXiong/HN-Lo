@@ -180,6 +180,7 @@ def apply_frame_transforms(
     image_dropout_prob: float = 0.0,
     image_dropout_keep_key: Optional[str] = None,
     num_parallel_calls: int = tf.data.AUTOTUNE,
+    augment_initial_image = False,
 ) -> dl.DLataset:
     """Applies common transforms that happen at a frame level. These transforms are usually more
     CPU-intensive, (e.g. decoding or resizing images).
@@ -245,6 +246,19 @@ def apply_frame_transforms(
             return frame
 
         dataset = dataset.frame_map(aug_and_dropout, num_parallel_calls)
+
+        def aug_initial_image(frame: dict):
+            seed = tf.random.uniform([2], maxval=tf.dtypes.int32.max, dtype=tf.int32)
+            kwargs = image_augment_kwargs['primary']
+            frame['task']['initial_image'] = dl.transforms.augment_image(
+                frame['task']['initial_image'],
+                **kwargs,
+                seed=seed,  # augment each image differently
+            )
+            return frame
+
+        if augment_initial_image:
+            dataset = dataset.frame_map(aug_initial_image, num_parallel_calls)
 
     return dataset
 
