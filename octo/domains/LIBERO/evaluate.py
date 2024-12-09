@@ -204,7 +204,7 @@ def evaluate(model_name, model_path, task_suite_name, seed=0, checkpoint_step=No
             model.task['initial_image'] = images.squeeze()
 
         print (f'===== {task_name} =====')
-        if finetune_config['clean_instruction']:
+        if finetune_config.get('clean_instruction', False):
             print ('cleaned task instruction')
             print (task_description)
 
