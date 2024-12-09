@@ -32,6 +32,9 @@ class OctoInference:
             dataset_id = "libero" if dataset_id is None else dataset_id
             action_ensemble_temp = 0.0
             # self.sticky_gripper_num_repeat = 1
+        elif policy_setup == 'metaworld':
+            dataset_id = "libero" if dataset_id is None else dataset_id
+            action_ensemble_temp = 0.0
         else:
             raise NotImplementedError(f"Policy setup {policy_setup} not supported for octo models.")
         self.policy_setup = policy_setup
@@ -199,20 +202,24 @@ class OctoInference:
 
         action = {}
         action["world_vector"] = raw_action["world_vector"] * self.action_scale
-        action["rot_euler"] = raw_action["rotation_delta"] * self.action_scale
-        action_rotation_delta = raw_action["rotation_delta"].astype(np.float64)
-        action_rotation_ax, action_rotation_angle = [], []
-        for i in range(action_rotation_delta.shape[0]):
-            roll, pitch, yaw = action_rotation_delta[i]
-            ax, angle = euler2axangle(roll, pitch, yaw)
-            action_rotation_ax.append(ax)
-            action_rotation_angle.append(angle)
-        action_rotation_ax = np.array(action_rotation_ax)
-        action_rotation_angle = np.array(action_rotation_angle)
-        action_rotation_axangle = action_rotation_ax * action_rotation_angle[:, None]
-        action["rot_axangle"] = action_rotation_axangle * self.action_scale
+
+        if self.policy_setup == 'libero':
+            action["rot_euler"] = raw_action["rotation_delta"] * self.action_scale
+            action_rotation_delta = raw_action["rotation_delta"].astype(np.float64)
+            action_rotation_ax, action_rotation_angle = [], []
+            for i in range(action_rotation_delta.shape[0]):
+                roll, pitch, yaw = action_rotation_delta[i]
+                ax, angle = euler2axangle(roll, pitch, yaw)
+                action_rotation_ax.append(ax)
+                action_rotation_angle.append(angle)
+            action_rotation_ax = np.array(action_rotation_ax)
+            action_rotation_angle = np.array(action_rotation_angle)
+            action_rotation_axangle = action_rotation_ax * action_rotation_angle[:, None]
+            action["rot_axangle"] = action_rotation_axangle * self.action_scale
         
         if self.policy_setup == 'libero':
             action["gripper"] = 2 * raw_action["open_gripper"] - 1
+        elif self.policy_setup == 'metaworld':
+            action["gripper"] = 1 - raw_action["open_gripper"]
 
         return raw_action, action, attention_weights, image, (self.task_description, self.task)

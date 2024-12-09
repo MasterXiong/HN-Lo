@@ -168,7 +168,7 @@ class OctoModel:
             mutable=['intermediates'],
             # capture_intermediates=True, 
         )
-        attention_weights = states['intermediates']['octo_transformer']['BlockTransformer_0']
+        attention_weights = states['intermediates']['octo_transformer']
         return out, attention_weights, lora_params
 
     @partial(
