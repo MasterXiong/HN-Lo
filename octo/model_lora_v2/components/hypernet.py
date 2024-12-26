@@ -97,6 +97,9 @@ class Hypernet(nn.Module):
             TF_context_embedding = output[:, (-base_token_num):((-base_token_num) + layer_token_num)]
             # transpose to shape: layer_num * batch_size * context_embedding_dim
             TF_context_embedding = jnp.transpose(TF_context_embedding, (1, 0, 2))
+            # scale the final context embedding
+            if self.hypernet_kwargs.get("scale_context_embedding", False):
+                TF_context_embedding /= jnp.sqrt(self.hypernet_kwargs["context_embedding_dim"])
             # apply dropout to the final context embedding
             embedding_dropout_rate = self.hypernet_kwargs.get("embedding_dropout_rate", 0.)
             TF_context_embedding = nn.Dropout(rate=embedding_dropout_rate)(TF_context_embedding, deterministic=not train)

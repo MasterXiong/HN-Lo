@@ -206,6 +206,7 @@ def get_config(config_string="head_only,language_conditioned,libero"):
         initial_image_input=initial_image_in_task_context,
         transfer_vit_params=False,
         augment_initial_image=augment_initial_image,
+        scale_context_embedding=False,
     )
 
     return ConfigDict(config)
